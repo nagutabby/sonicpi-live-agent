@@ -255,7 +255,7 @@ def validate(project: dict) -> dict:
             tracks.append(fx_track(t, tid, v, bars * cells_bar))
             continue
         pool = cat["samples"] if kind == "drum" else cat["synths"]
-        if kind == "drum" and is_vocal_wav(name):   # ボコーダーで作った wav(work/vocals 内)は、サンプル名の代わりにパスで指せる
+        if kind == "drum" and is_vocal_wav(name):   # 歌声の wav(work/vocals 内)は、サンプル名の代わりにパスで指せる
             pass
         elif name not in pool:
             raise ValueError(f"{tid}: 音色が見つかりません: {name}")
@@ -371,7 +371,7 @@ def bend_rows(notes: list, glide: float):
 
 
 def is_vocal_wav(name) -> bool:
-    """work/vocals/ の中の、実在する .wav への絶対パスか(ボーカルの wav を DAW のドラム行で鳴らす用)。"""
+    """work/vocals/ の中の、実在する .wav への絶対パスか(歌声の wav を DAW のドラム行で鳴らす用)。"""
     try:
         p = Path(str(name)).resolve()
         return p.suffix == ".wav" and p.is_file() and p.is_relative_to((ROOT / "work" / "vocals").resolve())

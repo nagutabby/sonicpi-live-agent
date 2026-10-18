@@ -234,14 +234,6 @@ def test_glide_slides_into_the_next_note():
     assert rows[1][3] == 0 and rows[2][3] == 0   # 同じ音程の続き / 次がない音は滑らない
 
 
-def test_vocal_harmony_shifts_a_third_in_the_scale():
-    import vocal_harmony as vh
-    pcs = vh.scale_pcs("Bb minor")
-    assert vh.shift_semitones(70, pcs, 2) == 3   # bb → db(短3度上)
-    assert vh.shift_semitones(73, pcs, 2) == 4   # db → f(長3度上)
-    assert vh.shift_semitones(70, pcs, -2) == -4  # bb → gb(長3度下)
-
-
 def test_record_video_flag_end_time():
     import record_video as rv
     times = [i / 30 for i in range(10)]

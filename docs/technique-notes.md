@@ -13,7 +13,7 @@
 | Piano | 背後から支える | 低音域(F2〜G3)、`lpf` の `cutoff` 90 前後、`vel` 0.35〜0.4・`hard` 0.2。トップノートから音を増やして旋律に昇格 | L012 L013 |
 | ビブラフォン風 | 硬く小さい金属音 | `pretty_bell` + `tremolo`(phase 0.5 拍 ≒ 4.8Hz)。`sustain` 0.25・リバーブ mix 0.12 で硬く | L014 |
 | Clap / Perc | 重み・伸び | `cnoise` の3連バースト(間隔 約 12ms)+ `pnoise` の胴鳴り(約 650Hz 以下)+ リバーブ。中心を 1.2kHz に下げて高域を弱める | L015 |
-| Vocal(ボコーダー) | 機械的に歌う声 | NEUTRINO の歌声 → 調声 → DSP ボコーダー。母音(う・あ)の形(フォルマント)を鋸波に載せる。滑らかさは `--smooth`・`--glide-ms`、シャリつきは `--hf-boost` | L017 |
+| Vocal(歌声) | 人の声の歌 | NEUTRINO の歌声をそのまま `sample` で載せる(`_clip.wav`)。歌詞は `docs/lyric-guide.md`、表情はリテイク・`--style-shift`・`--support`、音程や子音は `neutrino_tune.py` | L017 |
 | ハモリ | 厚み・明るさ | 主旋律の3度下(厚み)・3度上(明るさ)。コードトーンから選ぶ。上は小さめ(例 0.55) | L018 |
 
 ## 展開・構成別

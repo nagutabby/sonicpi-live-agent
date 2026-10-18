@@ -134,7 +134,7 @@
 
 ## 次のステムの順序(既定。ユーザーが言えば変える)
 
-Drums → Bass → Chords → Melody →(任意: ボーカル。ボコーダー風、`docs/vocal-helper.rb`)→ 装飾(FX・テクスチャ)。今の音に足りない要素から選ぶ(足りない帯域・リズム・和声)。**使うコード進行・キー・スケールは、ユーザーの `current.rb` から読み取って合わせる**(推測で変えない)。進行が読み取れないときは本人に聞く。
+Drums → Bass → Chords → Melody →(任意: ボーカル。NEUTRINO の歌声)→ 装飾(FX・テクスチャ)。今の音に足りない要素から選ぶ(足りない帯域・リズム・和声)。**使うコード進行・キー・スケールは、ユーザーの `current.rb` から読み取って合わせる**(推測で変えない)。進行が読み取れないときは本人に聞く。
 
 ## 最終レビュー(全体)
 
@@ -159,40 +159,40 @@ Drums → Bass → Chords → Melody →(任意: ボーカル。ボコーダー�
 ## 守ること
 
 - 音は **Sonic Pi の内蔵シンセ・FX・サンプルで鳴らすコード**として提案する。外部の音源・他曲の音声の流用、他人の旋律・歌詞の複製は提案しない。サンプルは Sonic Pi 同梱のものを使ってよい。ユーザーが用意した wav は、ユーザーが `sample` で指しているときだけ扱う。
-- **例外: NEUTRINO で作るボーカル**(下の「ボーカル」節)。エージェントが生成して `work/vocals/` に置く wav を、ボコーダー処理してから `sample` で鳴らす提案に限り認める。
+- **例外: NEUTRINO で作るボーカル**(下の「ボーカル」節)。エージェントが生成して `work/vocals/` に置く歌声の wav を、`sample` で鳴らす提案に限り認める。
 - シンセ・FX・サンプルなどの名前は、`sonicpi.py synths|fx [名前]` / `samples [グループ]|chords|scales` で確かめる。提案の前に `uv run scripts/live_check.py <file.rb>` を通す(終了コード 2 は直してから渡す)。
 - 既存ファイルの上書きは確認してから。`work/` 配下は git 管理しない(`.gitignore`)。
 - 認証が必要なとき(`gh auth login` など)は、必要なコマンドをユーザーに提示して**ユーザー自身に実行してもらう**。トークン・鍵の値をファイル・ログに書かない。
 
-## ボーカル(NEUTRINO → ボコーダー → Sonic Pi)
+## ボーカル(NEUTRINO Tau → Sonic Pi)
 
-ユーザーがボーカルを頼んだとき(`live-next-stem` のボーカル枠、または `live-vocal`)だけ行う。歌詞に意味は求めず、**音の響き**を重視する。
+ユーザーがボーカルを頼んだとき(`live-next-stem` のボーカル枠、または `live-vocal`)だけ行う。**人間らしい歌声(ボーカロイド的な歌唱)をそのまま曲に載せる**。ボコーダーなどで機械声にしない。歌詞は**意味のある日本語**を基本とし、書き方は `docs/lyric-guide.md`、調声は `docs/vocal-tuning.md`。
 
 **パイプライン**(1回に1フレーズ、4〜8小節)
-1. **譜面を作る**: `current.rb` のキー・BPM・コード進行・小節数を読み取り、歌詞(ひらがなの意味のない音節。例「かりまなら」)とメロディ(コードトーン中心、MIDI 55〜72)を `work/vocals/NN_<label>.json`(`{"bpm":130,"notes":[["お","C5",1.5],…]}`、`[歌詞,音名,拍]`、音名が空なら休符、音符は小節をまたがず、合計は小節数×4拍、使える長さは 0.25/0.5/0.75/1/1.5/2/3/4 拍)で書く。MusicXML への変換は `neutrino_sing.py` が行う。NEUTRINO は **日本語(ひらがな)のみ**。英語の響きが欲しいときは「ら・な・お・い」などかな近似にするか、内蔵の `docs/vocal-helper.rb`(`vsing`)を使う。
-2. **歌声合成**: `~/neutrino`(環境変数 `NEUTRINO_DIR`、既定 `~/neutrino`)の `bin/musicXMLtoLabel` → `bin/neutrino` を使う。引数の形は `~/neutrino/Run.sh` と同じ(`-n 4 -k 0 -f 0 -s 48000 -b 16 -t`)。**`~/neutrino` 配下は読み取り専用なので書き込まない**(Run.sh は使わず)。入出力のパス(label・`.f0`・`.melspec`・`.wav`)はすべて `work/vocals/` 配下を引数で指す。実行前に `DYLD_LIBRARY_PATH=$NEUTRINO_DIR/bin` を設定する。モデルは `$NEUTRINO_DIR/model/` 内(MERROW / NAKUMO / REINA / RUNO / SOMA)。ユーザーが指定しなければ MERROW。
-3. **調声(ボコーダー向きに作り直す)**: 素の歌声のまま変換せず、`uv run scripts/neutrino_tune.py work/vocals/NN_<label>_vN --preset vocoder` で中間ファイル(timing・f0・melspec)を編集して再合成する。音高を譜面へ固定(ビブラート・ゆらぎ除去)、子音を短く、高域と子音を持ち上げる。結果の数値(音高のずれ(セント)、4kHz 以上の比)を読み、足りなければ `--pitch-lock` `--consonant-scale` `--hf-boost` `--cons-boost` を1つだけ動かして作り直す。パラメータの意味と聴く箇所は `docs/vocal-tuning.md`。出力は `<名>_tuned_vN.*`。
-4. **ボコーダー変換**: NEUTRINO の wav をモジュレータ、`.f0` に追従する鋸波系キャリアで、チャンネル・ボコーダー(帯域分割+包絡追従)にかける。DSP のみで、AI・機械学習は使わない。出力は `work/vocals/NN_<label>_voc.wav`(48kHz/16bit)。
-5. **Sonic Pi に載せる**: `live_loop` で `sample "<絶対パス>/NN_<label>_voc.wav"` を、フレーズの長さ(拍)ぶん `sleep` して鳴らす提案を `proposals/NN_vocal_*.rb` に置く。`use_bpm` と合わせ、頭が小節線に揃うか確認する。`live_check.py` → `live_render.py current.rb proposals/NN….rb` → `wav_stats.py` は通常のステムと同じ。
-6. 解説と課題は通常の提案と同じ(母音の響き、子音の位置、帯域のかみ合わせ)。聴感は断定せず、聴く箇所を秒数で渡す。
+1. **歌詞とメロディを書く**: `current.rb` のキー・BPM・コード進行・小節数を読み取り、歌詞(ひらがな、発音どおり。`docs/lyric-guide.md`)とメロディ(コードトーン中心、MIDI 55〜72)を `work/vocals/NN_<label>.json` に書く。形は `{"bpm":130,"notes":[["お","C5",1.5],["な","Bb4",0.5,"br"],["","",1],["あ","G4",2,"tie"],["","G4",2]]}`、`[歌詞(かな1音), 音名, 拍, 印(省略可)]`。音名が空なら休符、音符は小節をまたがず(またぐ長い音は印 `tie` で同じ音名に繋ぐ)、合計は小節数×4拍、使える長さは 0.25/0.5/0.75/1/1.5/2/3/4 拍。印 `br` はその音符のあとのブレス記号。歌詞の記号は `っ`(促音)・`ー`(母音を伸ばす)・`'`(母音脱落)。NEUTRINO は **日本語(ひらがな・カタカナ)のみ**で、英語はかな近似にする。
+2. **歌詞を検査**: `uv run scripts/lyric_check.py work/vocals/NN_<label>.json`(1音符1モーラ・助詞の発音・小節またぎ・フレーズ中の細かい休符・ブレスなしの長いフレーズ。終了コード 2 は直す。警告は結果をそのまま伝える)。
+3. **歌声合成**: `uv run scripts/neutrino_sing.py work/vocals/NN_<label>.json [--model M] [--support S] [--style-shift K] [--transpose N]`。`~/neutrino`(環境変数 `NEUTRINO_DIR`、既定 `~/neutrino`)の `bin/musicXMLtoLabel` → `bin/neutrino`(Tau)を使う。**`~/neutrino` 配下は読み取り専用なので書き込まない**(Run.sh は使わない)。入出力のパスはすべて `work/vocals/` 配下。モデルは `$NEUTRINO_DIR/model/`(MERROW / NAKUMO / REINA / RUNO / SOMA)で、ユーザーが指定しなければ MERROW。`--support` は主モデルの声質のまま別モデルの歌い方を混ぜる、`--style-shift`(-5〜5)は上下のキーの歌い方に寄せる。出力は `<名>_vN.*` と、頭の無音を捨てて拍数で切った `<名>_vN_clip.wav`。
+4. **リテイクと調声**: NEUTRINO は生成のたびに波形が変わる。まず**作り直し(版を進める)**と、`--style-shift`・`--support` の違いを聴き比べる。音程・子音だけ直したいときは `uv run scripts/neutrino_tune.py work/vocals/NN_<label>_vN [--preset natural|tight]`(中間ファイル timing・f0・melspec を編集して再合成。既定の natural は表情を残す)。結果の数値(音高のずれ(セント)、4kHz 以上の比)を読み、足りなければ `--pitch-lock` `--consonant-scale` `--hf-boost` `--cons-boost` を1つだけ動かす。出力は `<名>_tuned_vN.*` と `_clip.wav`。
+5. **Sonic Pi に載せる**: `live_loop` で `sample "<絶対パス>/..._clip.wav"` を、フレーズの長さ(拍)ぶん `sleep` して鳴らす提案を `proposals/NN_vocal_*.rb` に置く。`use_bpm` と合わせ、頭が小節線に揃うか確認する。`live_check.py` → `live_render.py current.rb proposals/NN….rb` → `wav_stats.py` は通常のステムと同じ。
+6. 解説と課題は通常の提案と同じ(母音の響き、子音の位置、歌詞のはまり、帯域のかみ合わせ)。聴感は断定せず、聴く箇所を秒数で渡す。
 
 **運用ルール**
-- 譜面の生成・NEUTRINO 実行(CPU を使う)・ボコーダー変換は、**実行前に一言伝える**。生成物は `work/vocals/` に版を進めて置き、既存は上書きしない。
-- 案を求められたときは **5案**(別の歌詞/旋律/ボコーダー設定/ハモリ/刻み方など)。1回の提案は1フレーズ。ユーザーが具体的に指示したときは(例: 「上ハモリを追加」)、案を出さずに実行する。NEUTRINO の実行は CPU を使うので、5案のうち実際に歌わせるのは、ユーザーが選んだ案(または、違いの大きい案に絞る)にしてよい。
+- 譜面の生成・NEUTRINO 実行(CPU を使う)は、**実行前に一言伝える**。生成物は `work/vocals/` に版を進めて置き、既存は上書きしない。
+- 案を求められたときは **5案**(別の歌詞/旋律/モデル・スタイルシフト/ハモリ/刻み方など)。1回の提案は1フレーズ。ユーザーが具体的に指示したときは(例: 「上ハモリを追加」)、案を出さずに実行する。NEUTRINO の実行は CPU を使うので、5案のうち実際に歌わせるのは、ユーザーが選んだ案(または、違いの大きい案に絞る)にしてよい。ハモリは別の JSON(音程だけ変える)を歌わせる。
 - **利用許諾を守る**(`~/neutrino/利用許諾契約書.pdf`、モデルごとの規約は `model/<名前>/` の `license.pdf` / Readme): NEUTRINO の出力(wav・`.f0`・`.melspec`)を AI・機械学習による歌声/音声合成・変換の学習データや入力にしない。サンプルライブラリ・音源として配布しない。公序良俗に反する歌詞にしない。他人の歌詞・旋律の複製はしない。モデルの利用条件が分からないものは使う前にユーザーに確認する。
 - 生成した wav は `work/` 内に留め、git に入れない。
-- NEUTRINO は譜面の前後に **1小節の無音**を足す。`vocode.py` の `--lead-beats`(既定4)がそれを捨てるので、ボーカルの長さ(拍)は `--beats` に譜面の拍数を渡し、`sample` を鳴らす `live_loop` はその拍数だけ `sleep`(または小節数で間引く)して小節線に揃える。
-- 検証の目安: `wav_stats.py` でピーク(既定 -2dBFS 前後)と帯域比、`live_render.py` での重ね録りは録音前に一言断る。声の聞き取りやすさ・歌詞の響きは聴かないと分からないので、聴く箇所(秒)を渡して感想を聞く。
+- NEUTRINO は譜面の前に **1小節の無音**を足す。`neutrino_sing.py` / `neutrino_tune.py` が作る `_clip.wav` はそれを捨てて譜面の拍数で切ってあるので、`sample` を鳴らす `live_loop` はその拍数だけ `sleep`(または小節数で間引く)して小節線に揃える。
+- 検証の目安: `wav_stats.py` でピーク(既定 -2dBFS 前後)と長さ(拍数 × 60/BPM)、`live_render.py` での重ね録りは録音前に一言断る。声の聞き取りやすさ・歌詞の響き・歌い方の自然さは聴かないと分からないので、聴く箇所(秒)を渡して感想を聞く。歌詞の読み上げとの比較は `speak_phrase.py`(タイミング確認用)。
 
 ## 作業ディレクトリ
 
-- プロジェクト(曲)単位の管理はしない。作業場所は `work/` 1つだけ: `current.rb`(最新のコード。スタイル①はユーザーのコード、②は AI が更新)・`history/`(スタイル②で `current.rb` を更新する前の旧版)・`proposals/`(提案)・`renders/`(録音 wav、版は `_vN`)・`vocals/`(ボーカルの MusicXML・label・f0・wav・ボコーダー後の wav、版は `_vN`)・`notes.md`(スタイルと採否の記録)・`structure.md`(セクションごとの進行・内容。ユーザーと確認した記録)。
+- プロジェクト(曲)単位の管理はしない。作業場所は `work/` 1つだけ: `current.rb`(最新のコード。スタイル①はユーザーのコード、②は AI が更新)・`history/`(スタイル②で `current.rb` を更新する前の旧版)・`proposals/`(提案)・`renders/`(録音 wav、版は `_vN`)・`vocals/`(ボーカルの譜面 JSON・MusicXML・label・f0・wav・切り出した `_clip.wav`、版は `_vN`)・`notes.md`(スタイルと採否の記録)・`structure.md`(セクションごとの進行・内容。ユーザーと確認した記録)。
 - 学習ログは `work/` の外の `docs/learning-log.md`(曲を入れ替えても残る累積の記録)。
 - 別の曲を始めるときは、ユーザーが `work/` の中身を入れ替える(必要なら退避する)。エージェントは勝手に消さない。
 
 ## コマンド・スクリプト
 
-- ボーカル用: `neutrino_tune.py <base> [--preset vocoder|robot] [--pitch-lock …]`(調声。中間ファイルを編集し `<名>_tuned_vN.*` を出力)/ `neutrino_sing.py <phrase.json> [--model M]`(JSON → MusicXML → NEUTRINO で wav/f0。出力は `work/vocals/<名>_vN.*`)/ `vocode.py <wav> <f0> --bpm N [--beats 16] [--vibrato 20] [--dynamics] [--attack-beats 1] [--phrase-levels …] [--growl G]`(頭の1小節を捨てて拍数ぶん切り出し、ボコーダー wav を `_voc_vN.wav` で出力。`--vibrato` は音高の揺れ、`--dynamics` は声の強弱、`--attack-beats` は音符ごとの立ち上がり、`--growl` は唸り(ノイズが増えるので既定オフ))
+- ボーカル用: `lyric_check.py <phrase.json>…`(歌詞の検査。終了コード 0 / 1 警告 / 2 誤り)/ `neutrino_sing.py <phrase.json> [--model M] [--support S] [--style-shift K] [--transpose N] [--clip-from wav]`(JSON → MusicXML → NEUTRINO で wav/f0。出力は `work/vocals/<名>_vN.*` と、頭の1小節を捨てて拍数で切った `_clip.wav`。`--clip-from` は合成せず切り出しだけ)/ `neutrino_tune.py <base> [--preset natural|tight] [--pitch-lock …]`(調声。中間ファイルを編集し `<名>_tuned_vN.*` を出力)/ `speak_phrase.py <phrase.json>`(歌詞を `say` で読み上げた比較用 wav)
 - `check_structure.py [work/structure.md] [--final]`(セクションごとの進行・内容をユーザーと確認したかの検証。終了コード 0 / 1 警告 / 2 誤り)
 - 録音からメロディ(単音のハミング・口笛。ユーザー自身の録音に限る): `record_mic.py [--bpm N] [--count-in 1]`(Enter で録音開始、もう一度 Enter で停止 → `work/recordings/rec_vN.mp3`。`--bpm` を付けるとスピーカーからキックを拍ごとに鳴らし、最初の4拍は数えるだけで次の拍から歌う。横に BPM を記録した `.json` ができる。イヤホンだとキックが入らない)/ `melody_from_audio.py <mp3> --key "F minor" [--bpm N] [--octave N] [--min-note 0.1] [--grid 4] [--kick-hp 130] [--no-kick]`(YIN で音程を検出 → 全体の音程ずれを補正 → キーの音階へ寄せる → 拍に量子化 → `[拍の位置, 音名, 長さ]` の `live_loop` を `work/proposals/<名>_melody.rb` に出力。`.json` があれば BPM・キックの拍合わせ・130Hz 以下の除去を自動で行う。キーは必ず指定、BPM は省略すると `current.rb` の `use_bpm`)。出力は `live_check.py` を通し、聴いて確かめる(エージェントは聴けないので、結果は検出した音名と位置の数値で伝える)。手順・お題・調整表は `docs/melody-from-audio.md`、お題の伴奏は `docs/melody-exercise.rb`。
 - 録音からリズム(手拍子・机・ビートボックス。ユーザー自身の録音に限る。**一度の録音で取るのは1ステムだけ**): `record_mic.py --bpm N --count-only`(数えのキックだけ鳴って止まる)で録り、`rhythm_from_audio.py <mp3> [--stem kick|snare|hat|clap] [--bpm N] [--grid 4] [--bars N] [--threshold 0.25]`(音の頭を検出 → 最大音量で `X x o` → 拍に量子化 → グリッド文字列と `grid_play` の `live_loop` を `work/proposals/<名>_rhythm.rb` に出力。種類の自動判定はしない。`--stem` は鳴らす音の選択)。出力(メロディも同じ)は `grid_voice` / `grid_play` を使うので、`docs/live-grid.rb` のヘルパーを先頭に貼らないと Sonic Pi で動かない(単体で試すときは、ヘルパーを前に付けた実行用ファイルを作って渡す)。叩く音が小さいと雑音と区別できず結果が不安定なので、数えのキックと同じくらいの音量で叩いてもらう(ピークの目安 0.05 以上。標準エラーの音量を見る)。数えのあと、すぐ次の拍から叩き始める。お題は `docs/rhythm-exercise.rb`。聴いて確かめる。
@@ -204,7 +204,7 @@ Drums → Bass → Chords → Melody →(任意: ボーカル。ボコーダー�
 
 ## スキル(`.claude/skills/`)
 
-`live-vocal`(ボーカル: 歌わせる→調声→ボコーダー→載せる)/ `live-start`(開始・現状把握)/ `live-improve`(現在の音の改善)/ `live-next-stem`(次のステム)/ `live-review`(最終の全体レビュー)/ `coach-explain`(「なぜ?」の理論説明)/ `learning-log`(採用した案の学習ログへの追記・検索)/ `live-structure`(セクションごとの進行と内容をユーザーに聞いて記録・検証)。
+`live-vocal`(ボーカル: 歌詞→歌わせる→リテイク/調声→載せる)/ `live-start`(開始・現状把握)/ `live-improve`(現在の音の改善)/ `live-next-stem`(次のステム)/ `live-review`(最終の全体レビュー)/ `coach-explain`(「なぜ?」の理論説明)/ `learning-log`(採用した案の学習ログへの追記・検索)/ `live-structure`(セクションごとの進行と内容をユーザーに聞いて記録・検証)。
 
 ## 開発メモ
 

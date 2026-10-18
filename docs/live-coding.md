@@ -15,7 +15,6 @@
 | 拍の位置 | キック 1・3、スネア 2・4(バックビート)、ハイハット 8分 | 裏拍に置くとノリ(シンコペーション) |
 | 人間味 | `sleep` を `0.25 + rrand(-0.01, 0.01)`、`amp` の揺らし | 揺らしすぎるとよれる |
 | 音域の住み分け | ベース C1〜C3 / コード C3〜C5 / メロ C4〜C6 | `note` は MIDI 番号(60 = C4) |
-| ボーカル風(ボコーダー) | saw を母音のフォルマント(F1/F2/F3)の `bpf` 3つに通す。子音は短い `noise`/`pnoise`。`docs/vocal-helper.rb` の `vsing` | `res` 0.85、`amp` 比 1 : 0.6 : 0.3。`ring_mod` mix 0.2〜0.4 で機械っぽさ、`reverb` mix 0.3 |
 
 確認: `uv run scripts/sonicpi.py synths [名前]` / `fx [名前]` で内蔵シンセ・FX の引数、`samples [グループ]`(bass・bd・drum・elec・hat・loop・perc・sn など)で内蔵サンプル、`chords` / `scales` でコード・スケールの名前。`uv run scripts/live_check.py <file.rb>` で、これらの名前の検査(タイプミスには「もしかして」を出す)。一覧は config/sonicpi_catalog.json(シンセ・FX・サンプル・コード・スケールを1つにまとめたもの。Sonic Pi を更新したら `sonicpi.py dump-info` で作り直す)。
 
