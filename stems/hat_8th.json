@@ -1,10 +1,9 @@
 {
- "name": "ハット(クローズ)",
- "kind": "drum",
- "voice": {
-  "name": "drum_cymbal_closed",
-  "amp": 0.4,
-  "pan": 0
- },
- "description": "短く閉じたハット"
+  "name": "ハット(クローズ)",
+  "kind": "drum",
+  "voice": {
+    "name": "drum_cymbal_closed",
+    "pan": 0
+  },
+  "description": "短く閉じたハット"
 }

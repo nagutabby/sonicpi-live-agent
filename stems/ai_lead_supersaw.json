@@ -3,7 +3,6 @@
   "kind": "melody",
   "voice": {
     "name": "supersaw",
-    "amp": 0.45,
     "pan": 0.0,
     "cutoff": 105,
     "env": "stab"

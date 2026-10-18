@@ -1,0 +1,12 @@
+{
+  "name": "オーボエ(旋律)",
+  "kind": "melody",
+  "voice": {
+    "name": "work/samples/oboe",
+    "pan": -0.2,
+    "cutoff": 110,
+    "env": "stab"
+  },
+  "description": "鼻にかかった細い音。フルートとの掛け合いに(bb2〜f5)",
+  "source": "ai"
+}

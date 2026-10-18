@@ -3,7 +3,6 @@
   "kind": "drum",
   "voice": {
     "name": "bd_boom",
-    "amp": 1.0,
     "pan": 0.0
   },
   "description": "低く長いキック。ハーフタイムの 1 拍目に",

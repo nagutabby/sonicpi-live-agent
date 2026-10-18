@@ -1,0 +1,12 @@
+{
+  "name": "ヴァイオリン(旋律)",
+  "kind": "melody",
+  "voice": {
+    "name": "work/samples/violin_section",
+    "pan": 0.1,
+    "cutoff": 110,
+    "env": "stab"
+  },
+  "description": "アートコアの主旋律向き。高域の1音ずつの歌い方(g2〜d5)",
+  "source": "ai"
+}

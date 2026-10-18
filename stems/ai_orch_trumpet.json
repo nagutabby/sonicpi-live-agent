@@ -1,0 +1,12 @@
+{
+  "name": "トランペット(ファンファーレ)",
+  "kind": "melody",
+  "voice": {
+    "name": "work/samples/trumpet",
+    "pan": 0.1,
+    "cutoff": 110,
+    "env": "stab"
+  },
+  "description": "アートコアの高揚するサビ向き。短いフレーズで(f2〜c5)",
+  "source": "ai"
+}

@@ -1,0 +1,12 @@
+{
+  "name": "チューバ(低音)",
+  "kind": "bass",
+  "voice": {
+    "name": "work/samples/tuba",
+    "pan": 0,
+    "cutoff": 80,
+    "env": "stab"
+  },
+  "description": "金管の低音。ドロップ前の底(f0〜d3)",
+  "source": "ai"
+}

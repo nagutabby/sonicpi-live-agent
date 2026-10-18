@@ -3,7 +3,6 @@
   "kind": "drum",
   "voice": {
     "name": "perc_bell",
-    "amp": 0.4,
     "pan": 0.0
   },
   "description": "高い金属の打音",

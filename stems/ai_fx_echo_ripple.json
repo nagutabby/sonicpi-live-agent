@@ -1,0 +1,14 @@
+{
+  "name": "さざ波のエコー",
+  "kind": "fx",
+  "voice": {
+    "name": "echo",
+    "mix": 0.3,
+    "params": {
+      "phase": 0.75,
+      "decay": 4
+    }
+  },
+  "description": "付点8分の間隔で繰り返す。ハープやグロッケンの音が水面の波紋のように広がる",
+  "source": "ai"
+}

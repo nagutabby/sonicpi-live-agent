@@ -1,0 +1,12 @@
+{
+  "name": "チューブラーベル(鐘)",
+  "kind": "melody",
+  "voice": {
+    "name": "work/samples/tubular_bells",
+    "pan": -0.2,
+    "cutoff": 110,
+    "env": "stab"
+  },
+  "description": "遠い鐘の響き。『沈める寺』のような低音の鐘にも(c3〜e4)",
+  "source": "ai"
+}

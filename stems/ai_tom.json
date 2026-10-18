@@ -3,7 +3,6 @@
   "kind": "drum",
   "voice": {
     "name": "drum_tom_mid_hard",
-    "amp": 0.7,
     "pan": 0.0
   },
   "description": "フィルに使うタム",

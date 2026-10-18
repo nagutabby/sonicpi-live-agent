@@ -1,10 +1,9 @@
 {
- "name": "スネア",
- "kind": "drum",
- "voice": {
-  "name": "sn_dolf",
-  "amp": 0.8,
-  "pan": 0
- },
- "description": "バックビート向きのスネア"
+  "name": "スネア",
+  "kind": "drum",
+  "voice": {
+    "name": "sn_dolf",
+    "pan": 0
+  },
+  "description": "バックビート向きのスネア"
 }

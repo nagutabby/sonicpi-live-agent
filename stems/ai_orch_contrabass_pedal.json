@@ -1,0 +1,12 @@
+{
+  "name": "コントラバス(ペダル)",
+  "kind": "bass",
+  "voice": {
+    "name": "work/samples/contrabass",
+    "pan": 0,
+    "cutoff": 85,
+    "env": "pad"
+  },
+  "description": "長く伸ばす低音。ペダルポイント(同じ低音を保つ)で和音だけ動かす(fs0〜b2)",
+  "source": "ai"
+}

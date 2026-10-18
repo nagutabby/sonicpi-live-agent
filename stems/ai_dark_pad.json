@@ -3,7 +3,6 @@
   "kind": "chord",
   "voice": {
     "name": "hollow",
-    "amp": 0.5,
     "pan": 0,
     "cutoff": 85,
     "env": "pad"

@@ -1,0 +1,12 @@
+{
+  "name": "ヴィオラ群(中域パッド)",
+  "kind": "chord",
+  "voice": {
+    "name": "work/samples/viola_section",
+    "pan": 0.25,
+    "cutoff": 100,
+    "env": "pad"
+  },
+  "description": "内声を埋める温かい中域。9th・sus の和音向き(c2〜d5)",
+  "source": "ai"
+}

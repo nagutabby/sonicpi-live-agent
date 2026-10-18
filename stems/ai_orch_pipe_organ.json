@@ -1,0 +1,12 @@
+{
+  "name": "パイプオルガン(パッド)",
+  "kind": "chord",
+  "voice": {
+    "name": "work/samples/pipe_organ",
+    "pan": 0,
+    "cutoff": 95,
+    "env": "pad"
+  },
+  "description": "厚い持続音。荘厳さ、サビ前の溜めに(c1〜c6)",
+  "source": "ai"
+}

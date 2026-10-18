@@ -1,0 +1,12 @@
+{
+  "name": "チェロ(旋律)",
+  "kind": "melody",
+  "voice": {
+    "name": "work/samples/cello_section",
+    "pan": -0.1,
+    "cutoff": 100,
+    "env": "stab"
+  },
+  "description": "深く歌う対旋律。ヴァイオリンの下で動かす(c1〜f4)",
+  "source": "ai"
+}

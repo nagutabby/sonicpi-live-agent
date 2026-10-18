@@ -1,0 +1,14 @@
+{
+  "name": "霧のリバーブ(印象派)",
+  "kind": "fx",
+  "voice": {
+    "name": "reverb",
+    "mix": 0.6,
+    "params": {
+      "room": 1,
+      "damp": 0.3
+    }
+  },
+  "description": "最大の部屋で高域を残す長い残響。輪郭を溶かして色彩にする。ハープ・フルート・弦に",
+  "source": "ai"
+}

@@ -3,7 +3,6 @@
   "kind": "bass",
   "voice": {
     "name": "sc808_bassdrum",
-    "amp": 0.9,
     "pan": 0,
     "cutoff": 70,
     "env": "pluck"

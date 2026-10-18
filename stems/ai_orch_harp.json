@@ -1,0 +1,12 @@
+{
+  "name": "ハープ(アルペジオ)",
+  "kind": "chord",
+  "voice": {
+    "name": "work/samples/harp",
+    "pan": 0.15,
+    "cutoff": 110,
+    "env": "stab"
+  },
+  "description": "印象派の定番。9th・add9 の分散和音や上昇グリッサンドに。余韻が長いので休符を残す(e1〜f7)",
+  "source": "ai"
+}

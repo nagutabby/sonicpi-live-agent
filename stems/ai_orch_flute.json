@@ -1,0 +1,12 @@
+{
+  "name": "フルート(旋律)",
+  "kind": "melody",
+  "voice": {
+    "name": "work/samples/flute",
+    "pan": 0.2,
+    "cutoff": 110,
+    "env": "stab"
+  },
+  "description": "ドビュッシー『牧神の午後』のような、やわらかい旋律。全音音階・ペンタトニックで(c3〜c6)",
+  "source": "ai"
+}

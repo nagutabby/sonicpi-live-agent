@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 
 from common import ROOT
 
@@ -39,6 +38,29 @@ FX_INFO = {
     "vowel": ("フォルマント(母音)", "声の母音の響き(フォルマント)を作り、声らしくする", 1, {"vowel_sound": ("母音(1あ 2え 3い 4お 5う)", 1, 5, 4), "voice": ("声の種類(0〜4 高い→低い)", 0, 4, 4)}),
     "sidechain": ("サイドチェイン", "グリッドの X の位置で対象の音量を下げ、すぐ戻す。キックに合わせて他の音が息をする", 1, {"depth": ("下げる深さ", 0, 1, 0.8), "release": ("戻る時間(拍)", 0.05, 1.5, 0.4)}),
 }
+AMP_MAX = 3.0       # velocity 127 のときの amp。音が小さめの音色(弦など)も十分に上げられる
+VEL_DEFAULT = 64    # velocity の既定(amp 1.5)
+
+
+def vel_to_amp(vel) -> float:
+    """ベロシティ(0〜127)を Sonic Pi の amp に直す。"""
+    return round(vel / 127 * AMP_MAX, 3)
+
+
+LEVELS = "123456789abcdefghijklmnopqrstuvwxyz"   # ドラムの steps の 1 マスのベロシティ(35 段階。1 = 最弱、z = 最強)。. は休み、- は伸ばす
+AMP_EXPR = f"vel / 127.0 * {AMP_MAX:g}"   # 生成コード中の、ベロシティ(vel)から amp への式(vel_to_amp と同じ)
+
+
+def level_vel(ch: str) -> int:
+    """steps の文字(LEVELS)をベロシティ(0〜127)に直す。"""
+    return round((LEVELS.index(ch) + 1) * 127 / len(LEVELS))
+
+
+def vel_level(vel) -> str:
+    """ベロシティ(0〜127)に近い steps の文字(LEVELS)。"""
+    return LEVELS[max(1, min(len(LEVELS), round(vel * len(LEVELS) / 127))) - 1]
+
+
 MAX_NOTES = 4096   # 1 トラックの音の最大数(超えた分は末尾から捨てられる)
 MAX_TRACKS = 40   # トラックの最大数(超えた分は末尾から捨てられる)
 MAX_BARS = 128   # 曲の最大小節数
@@ -46,7 +68,7 @@ INT_PARAMS = {"bits", "sample_rate", "vowel_sound", "voice"}
 ENVS = ("pluck", "stab", "pad", "swell")
 PITCH = re.compile(r"^([a-g])([sb]?)(-?\d)$")
 ROOTS = ("c", "cs", "d", "eb", "e", "f", "fs", "g", "ab", "a", "bb", "b")
-GRID = re.compile(r"^[xXo1-9.\-]+$")
+GRID = re.compile(r"^[xXo1-9a-z.\-]+$")
 HELPERS = ROOT / "docs" / "live-grid.rb"
 CATALOG = ROOT / "config" / "sonicpi_catalog.json"
 
@@ -186,11 +208,19 @@ def legacy_notes(kind: str, steps: str, prog: list, res: int, cells_bar: int, oc
     return out
 
 
-def norm_steps(raw, want: int, tid: str) -> str:
+def norm_steps(raw, want: int, tid: str, legacy_vel=None, levels: bool = False) -> str:
+    """steps を整える。levels=True(ドラム)は 1 マスごとにベロシティの文字(LEVELS)が必要。古い X は legacy_vel(トラックの古い音量)の文字に直す。
+    levels=False(サイドチェイン)は、音の強さを使わず、音はすべて X。"""
     steps = re.sub(r"[ |\t]", "", str(raw or ""))
-    steps = re.sub(r"[xo1-9]", "X", steps)  # 音の強さは使わない: 音はすべて X
     if steps and not GRID.match(steps):
         raise ValueError(f"{tid}: パターンに使えない文字があります")
+    if levels:
+        if "X" in steps:
+            if legacy_vel is None:
+                raise ValueError(f"{tid}: ドラムの音は 1 マスごとにベロシティの文字(1〜9, a〜z)が必要です。X は使えません")
+            steps = steps.replace("X", vel_level(legacy_vel))
+    else:
+        steps = re.sub(r"[xo1-9a-z]", "X", steps)
     return (steps + "." * want)[:want]
 
 
@@ -261,7 +291,14 @@ def validate(project: dict) -> dict:
             pass
         elif name not in pool:
             raise ValueError(f"{tid}: 音色が見つかりません: {name}")
-        voice = {"name": name, "amp": round(num(v.get("amp", v.get("velocity")), 0, 2, 0.8), 3), "pan": round(num(v.get("pan"), -1, 1, 0), 2)}
+        # 音量はノートごと(ドラムは 1 マスごと)のベロシティで持つ。voice には持たない。古い形式のトラック音量(velocity か amp)は、
+        # ベロシティのないノート・X に引き継ぐ(移行用)。それもなければ、ベロシティのないノートは誤りになる
+        legacy = None
+        if v.get("velocity") is not None:
+            legacy = round(num(v.get("velocity"), 0, 127, VEL_DEFAULT))
+        elif v.get("amp") is not None:
+            legacy = round(num(v.get("amp"), 0, AMP_MAX, 0) / AMP_MAX * 127)
+        voice = {"name": name, "pan": round(num(v.get("pan"), -1, 1, 0), 2)}
         if kind == "drum" and num(v.get("rate"), -2, 2, 1) not in (0, 1):   # サンプルの再生速度。-1 = 逆再生(リバース)
             voice["rate"] = round(num(v.get("rate"), -2, 2, 1), 2)
         if kind != "drum":
@@ -276,6 +313,7 @@ def validate(project: dict) -> dict:
             beats_total = bars * meter
             raw = t.get("notes")
             if raw is None and t.get("steps"):  # 古い形式(コード進行に従うグリッド)は、音程つきの音に直す
+                legacy = VEL_DEFAULT if legacy is None else legacy
                 raw = legacy_notes(kind, str(t["steps"]), [c or tonic for c in prog], res, cells_bar, int(num(t.get("octave"), 2, 6, 4)))
             notes = []
             note_res = res * 2
@@ -283,15 +321,21 @@ def validate(project: dict) -> dict:
                 beat = round(num(n[0], 0, beats_total - 0.125, 0) * note_res) / note_res   # 音の位置・長さは 0.125 拍刻み(溜めなどの微妙なずらし用)
                 ln = max(round(num(n[2], 0.125, beats_total, 0.5) * note_res) / note_res, 1 / note_res)
                 pitch_sym(n[1])
-                item = [beat, str(n[1]).lower(), min(ln, beats_total - beat)]
-                if len(n) > 3 and num(n[3], -24, 24, 0):   # ピッチベンド(半音): 音の長さをかけて、この分だけ音程が動く
-                    item.append(round(num(n[3], -24, 24, 0), 2))
+                if len(n) > 3 and n[3] is not None:
+                    vel = round(num(n[3], 0, 127, VEL_DEFAULT))
+                elif legacy is not None:
+                    vel = legacy
+                else:
+                    raise ValueError(f"{tid}: ノートごとにベロシティが必要です: [位置, 音名, 長さ, ベロシティ] の形で書いてください: {n}")
+                item = [beat, str(n[1]).lower(), min(ln, beats_total - beat), vel]
+                if len(n) > 4 and num(n[4], -24, 24, 0):   # ピッチベンド(半音): 音の長さをかけて、この分だけ音程が動く
+                    item.append(round(num(n[4], -24, 24, 0), 2))
                 notes.append(item)
             notes.sort(key=lambda x: (x[0], name_midi(x[1])))
             tracks.append({"id": tid, "name": str(t.get("name") or tid)[:24], "kind": kind, "voice": voice,
                            "notes": notes, "mute": bool(t.get("mute")), "solo": bool(t.get("solo"))})
             continue
-        steps = norm_steps(t.get("steps"), bars * cells_bar, tid)
+        steps = norm_steps(t.get("steps"), bars * cells_bar, tid, legacy, True)
         out = {"id": tid, "name": str(t.get("name") or tid)[:24], "kind": kind, "voice": voice, "steps": steps,
                "mute": bool(t.get("mute")), "solo": bool(t.get("solo"))}
         tracks.append(out)
@@ -344,7 +388,7 @@ def slice_project(project: dict, start_cell: int = 0, end_cell: int | None = Non
             for n in x["notes"]:   # 範囲の前から鳴っている音は、範囲の頭から残りの長さで鳴らし直す
                 s, e = max(n[0], t0), min(n[0] + n[2], t1)
                 if e > s:
-                    notes.append([s - t0, n[1], e - s] + (n[3:] if (s, e) == (n[0], n[0] + n[2]) else []))
+                    notes.append([s - t0, n[1], e - s, n[3]] + (n[4:] if (s, e) == (n[0], n[0] + n[2]) else []))
             x["notes"] = notes
         tracks.append(x)
     first = a // cb
@@ -352,14 +396,14 @@ def slice_project(project: dict, start_cell: int = 0, end_cell: int | None = Non
 
 
 def bend_rows(notes: list, glide: float):
-    """ピッチベンドかグライドがあるトラックの音を、[拍, 音名, 長さ, ベンド(半音), 滑り始めまでの拍, 滑る拍数] にする。なければ None。
+    """ピッチベンドかグライドがあるトラックの音を、[拍, 音名, 長さ, ベロシティ, ベンド(半音), 滑り始めまでの拍, 滑る拍数] にする。なければ None。
     グライド: 次の音がちょうど続いて始まり(和音なら音程がいちばん近い音へ、7 半音以内)、音程が違うとき、最後の glide 拍で滑る。"""
-    if not glide and not any(len(n) > 3 for n in notes):
+    if not glide and not any(len(n) > 4 for n in notes):
         return None
     rows = []
     for n in notes:
-        bd, gs, g = (n[3] if len(n) > 3 else 0), 0.0, max(n[2], 0.25)
-        if len(n) > 3:
+        bd, gs, g = (n[4] if len(n) > 4 else 0), 0.0, max(n[2], 0.25)
+        if len(n) > 4:
             gs, g = 0.0, n[2]
         elif glide:
             nxt = [m for m in notes if m is not n and abs(m[0] - (n[0] + n[2])) < 0.01]
@@ -368,7 +412,7 @@ def bend_rows(notes: list, glide: float):
                 if 0 < abs(d) <= 7:
                     g = min(glide, n[2])
                     bd, gs = d, n[2] - g
-        rows.append([n[0], n[1], n[2], bd, gs, g])
+        rows.append([n[0], n[1], n[2], n[3], bd, gs, g])
     return rows
 
 
@@ -379,7 +423,7 @@ SAMPLE_PITCH = re.compile(r"^([A-Ga-g])([#b]?)(-?\d)$")   # ファイル名の `
 def is_vocal_wav(name) -> bool:
     """work/vocals/ か work/samples/ の中の、実在する .wav への絶対パスか(歌声・取り込んだ wav を DAW のドラム行で鳴らす用)。"""
     try:
-        p = Path(str(name)).resolve()
+        p = (ROOT / str(name)).resolve()   # 相対パスは ROOT(リポジトリ直下)から。stem に入れても環境で変わらない
         return p.suffix == ".wav" and p.is_file() and any(p.is_relative_to((ROOT / "work" / d).resolve()) for d in WAV_DIRS)
     except (OSError, ValueError):
         return False
@@ -389,7 +433,7 @@ def sample_pitches(name) -> list[tuple[int, str]]:
     """work/samples/ の中のフォルダにある、音名つきの wav の一覧 [(MIDI 番号, 絶対パス)]。音名はファイル名の `_` 区切りの 1 語から読む。
     同じ音が複数あれば(ラウンドロビン・マイク違い)、名前順で最初の 1 つ。フォルダでなければ空。"""
     try:
-        d = Path(str(name)).resolve()
+        d = (ROOT / str(name)).resolve()
         if not (d.is_dir() and d.is_relative_to((ROOT / "work" / "samples").resolve())):
             return []
     except (OSError, ValueError):
@@ -407,6 +451,8 @@ def sample_pitches(name) -> list[tuple[int, str]]:
 
 
 def sample_ref(name: str) -> str:
+    if is_vocal_wav(name):
+        return json.dumps(str((ROOT / name).resolve()))
     return json.dumps(name) if name.startswith("/") else f":{name}"
 
 
@@ -427,11 +473,11 @@ def opts_str(voice: dict, kind: str) -> str:
         # :piano は自然な減衰が音色。attack / cutoff は渡さない(attack は短くする向きにしか効かない)。
         # 音の長さ(sustain)は渡す: 渡さないと、既定の sustain 0 / release 1 で約 1 拍で切れてしまう。長い音ほど長く鳴る。
         # amp は音量と、打鍵の強さ(vel。強いほど明るく硬い音)の両方に効かせる
-        parts = [f"amp: {voice['amp'] * PIANO_AMP:g}", f"vel: {min(voice['amp'], 1):g}"]
+        parts = [f"amp: {AMP_EXPR} * {PIANO_AMP:g}", "vel: vel / 127.0"]
         if voice.get("pan"):
             parts.append(f"pan: {voice['pan']:g}")
         return ", ".join(parts)
-    parts = [f"amp: {voice['amp']:g}"]
+    parts = [f"amp: {AMP_EXPR}"]
     if voice.get("pan"):
         parts.append(f"pan: {voice['pan']:g}")
     if voice.get("rate"):
@@ -447,7 +493,7 @@ def opts_str(voice: dict, kind: str) -> str:
 def sample_opts(voice: dict) -> str:
     """音程つきサンプル楽器の sample のオプション。env は attack / release(拍)、sustain は音の長さ l。"""
     att, rel = ENV_BEATS[voice["env"]]
-    parts = [f"amp: {voice['amp']:g}"]
+    parts = [f"amp: {AMP_EXPR}"]
     if voice.get("pan"):
         parts.append(f"pan: {voice['pan']:g}")
     return ", ".join(parts + [f"cutoff: {voice['cutoff']}", f"attack: {att:g}", f"release: {rel:g}"])
@@ -496,16 +542,18 @@ def generate(project: dict) -> str:
     loops: dict[str, list[str]] = {}   # トラック id -> live_loop の行
     for t in music:
         i, v = t["id"], t["voice"]
-        if t["kind"] == "drum":
-            out += [f"voice_{i} = grid_voice :sample, {sample_ref(v['name'])}, {opts_str(v, 'drum')}",
-                    f"pat_{i} = \"{fmt_pattern(t['steps'], res, meter)}\""]
-            loops[i] = [f"live_loop :{i} do grid_play voice_{i}, pat_{i} end"]
+        if t["kind"] == "drum":   # 1 マスごとのベロシティで、サンプルを鳴らす
+            hits = ", ".join(f"[{k / res:g}, {level_vel(c)}]" for k, c in enumerate(t["steps"]) if c in LEVELS)
+            out.append(f"hits_{i} = [{hits}]   # [拍の位置, ベロシティ]")
+            opts = [f"amp: {AMP_EXPR}"] + ([f"pan: {v['pan']:g}"] if v.get("pan") else []) + ([f"rate: {v['rate']:g}"] if v.get("rate") else [])
+            loops[i] = [f"live_loop :{i} do", "  t = 0", f"  hits_{i}.each do |b, vel|", "    sleep b - t",
+                        f"    sample {sample_ref(v['name'])}, {', '.join(opts)}", "    t = b", "  end", f"  sleep {total} - t", "end"]
         elif sample_pitches(v["name"]):   # 音名つき wav: いちばん近い音の wav を rate で音程をずらして鳴らす
             table = ", ".join(f"[{m}, {json.dumps(path)}]" for m, path in sample_pitches(v["name"]))
             out.append(f"smp_{i} = [{table}]   # [MIDI 番号, wav]")
-            notes = ", ".join(f"[{n[0]:g}, {pitch_sym(n[1])}, {n[2]:g}]" for n in t["notes"])
-            out.append(f"notes_{i} = [{notes}]   # [拍の位置, 音名, 長さ(拍)]")
-            loops[i] = [f"live_loop :{i} do", "  t = 0", f"  notes_{i}.each do |b, n, l|", "    sleep b - t",
+            notes = ", ".join(f"[{n[0]:g}, {pitch_sym(n[1])}, {n[2]:g}, {n[3]}]" for n in t["notes"])
+            out.append(f"notes_{i} = [{notes}]   # [拍の位置, 音名, 長さ(拍), ベロシティ]")
+            loops[i] = [f"live_loop :{i} do", "  t = 0", f"  notes_{i}.each do |b, n, l, vel|", "    sleep b - t",
                         f"    m, f = smp_{i}.min_by {{ |k, _| (k - note(n)).abs }}",
                         f"    sample f, rate: 2**((note(n) - m) / 12.0), {sample_opts(v)}, sustain: l",
                         "    t = b", "  end", f"  sleep {total} - t", "end"]
@@ -513,16 +561,16 @@ def generate(project: dict) -> str:
             rows = bend_rows(t["notes"], v.get("glide", 0))
             bent = rows is not None
             if bent:
-                notes = ", ".join(f"[{r[0]:g}, {pitch_sym(r[1])}, {r[2]:g}, {r[3]:g}, {r[4]:g}, {r[5]:g}]" for r in rows)
-                out.append(f"notes_{i} = [{notes}]   # [拍の位置, 音名, 長さ(拍), ピッチベンド(半音), 滑り始めまでの拍, 滑る拍数]")
+                notes = ", ".join(f"[{r[0]:g}, {pitch_sym(r[1])}, {r[2]:g}, {r[3]}, {r[4]:g}, {r[5]:g}, {r[6]:g}]" for r in rows)
+                out.append(f"notes_{i} = [{notes}]   # [拍の位置, 音名, 長さ(拍), ベロシティ, ピッチベンド(半音), 滑り始めまでの拍, 滑る拍数]")
                 play = [f"    s = play n, {opts_str(v, 'note')}, sustain: l, note_slide: g",
                         "    if bd != 0", "      in_thread do", "        sleep gs", "        control s, note: note(n) + bd", "      end", "    end"]
             else:
-                notes = ", ".join(f"[{n[0]:g}, {pitch_sym(n[1])}, {n[2]:g}]" for n in t["notes"])
-                out.append(f"notes_{i} = [{notes}]   # [拍の位置, 音名, 長さ(拍)]")
+                notes = ", ".join(f"[{n[0]:g}, {pitch_sym(n[1])}, {n[2]:g}, {n[3]}]" for n in t["notes"])
+                out.append(f"notes_{i} = [{notes}]   # [拍の位置, 音名, 長さ(拍), ベロシティ]")
                 play = [f"    play n, {opts_str(v, 'note')}, sustain: l"]
             loops[i] = [f"live_loop :{i} do", f"  use_synth :{v['name']}", "  t = 0",
-                        f"  notes_{i}.each do |b, n, l{', bd, gs, g' if bent else ''}|", "    sleep b - t",
+                        f"  notes_{i}.each do |b, n, l, vel{', bd, gs, g' if bent else ''}|", "    sleep b - t",
                         *play, "    t = b", "  end",
                         f"  sleep {total} - t", "end"]
     for f in fxs:

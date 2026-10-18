@@ -1,0 +1,12 @@
+{
+  "name": "トロンボーン(パッド)",
+  "kind": "chord",
+  "voice": {
+    "name": "work/samples/trombone",
+    "pan": 0,
+    "cutoff": 85,
+    "env": "pad"
+  },
+  "description": "重く暗い和音。緊張や荘厳さに(bb0〜f3)",
+  "source": "ai"
+}

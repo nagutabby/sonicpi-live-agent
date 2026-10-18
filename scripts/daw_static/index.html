@@ -151,6 +151,12 @@ pre{margin:0;padding:10px;overflow:auto;font-size:11px;color:#c9d1e0;flex:1;whit
 'use strict';
 const $ = s => document.querySelector(s);
 const h = (tag, props = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(props)) { if (k === 'class') e.className = v; else if (k === 'style') e.style.cssText = v; else if (k.startsWith('on')) e[k] = v; else e[k] = v; } e.append(...kids.filter(x => x != null)); return e; };
+const ampV = vel => vel / 127 * 3;   // ベロシティ(0〜127) → amp。daw_codegen.vel_to_amp と同じ
+const LEVELS = '123456789abcdefghijklmnopqrstuvwxyz';   // ドラムの steps の 1 マスのベロシティ(35 段階)。daw_codegen.LEVELS と同じ
+const levelVel = c => Math.round((LEVELS.indexOf(c) + 1) * 127 / LEVELS.length);
+const velLevel = v => LEVELS[Math.max(1, Math.min(LEVELS.length, Math.round(v * LEVELS.length / 127))) - 1];
+const pen = t => t.pen ?? 80;   // 新しく置く音のベロシティ(画面だけの状態。保存しない)
+const velOpacity = vel => .3 + .7 * vel / 127;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const KIND = { drum: ['ドラム', '#ff8f6b'], bass: ['ベース', '#ff6b9d'], chord: ['コード', '#ffd166'], melody: ['メロディ', '#5ec4ff'], fx: ['エフェクト', '#b48cff'] };
 const SUF = { major: '', minor: 'm', major7: 'maj7', minor7: 'm7', dom7: '7', sus2: 'sus2', sus4: 'sus4', diminished: 'dim', m9: 'm9', major9: 'maj9', add9: 'add9' };
@@ -242,7 +248,7 @@ function fitBars(n) {
   P.prog.length = n; P.markers = (P.markers || []).filter(m => m.bar < n);
   for (const t of P.tracks) {
     if (t.steps != null) t.steps = (t.steps + '.'.repeat(Math.max(n - old, 0) * cb)).slice(0, n * cb);
-    else if (t.notes) t.notes = t.notes.filter(x => x[0] < n * P.meter).map(x => [x[0], x[1], Math.min(x[2], n * P.meter - x[0])]);
+    else if (t.notes) t.notes = t.notes.filter(x => x[0] < n * P.meter).map(x => [x[0], x[1], Math.min(x[2], n * P.meter - x[0]), ...x.slice(3)]);
   }
 }
 function persist() { pendingSave = true; clearTimeout(saveT); say('編集中…'); saveT = setTimeout(save, 700); }
@@ -308,7 +314,7 @@ function copyBars() {
   for (const t of P.tracks) {
     if (bsel.track !== null && t.id !== bsel.track) continue;
     if (t.steps != null) tracks[t.id] = { steps: bars.map(b => t.steps.slice(b * cb, (b + 1) * cb)).join('') };
-    else if (t.notes) { const notes = []; bars.forEach((b, i) => { for (const x of t.notes) if (x[0] >= b * m && x[0] < (b + 1) * m) { const st = x[0] - b * m + i * m; notes.push([st, x[1], Math.min(x[2], n * m - st)]); } }); tracks[t.id] = { notes }; }
+    else if (t.notes) { const notes = []; bars.forEach((b, i) => { for (const x of t.notes) if (x[0] >= b * m && x[0] < (b + 1) * m) { const st = x[0] - b * m + i * m; notes.push([st, x[1], Math.min(x[2], n * m - st), ...x.slice(3)]); } }); tracks[t.id] = { notes }; }
   }
   clip = { n, tracks, prog: bsel.track === null ? bars.map(b => P.prog[b] && [...P.prog[b]]) : null };
   lastCopy = 'bars'; say(`${n} 小節をコピーしました(貼り付け先の小節を選んで ⌘V)`); return true;
@@ -322,7 +328,7 @@ function pasteBars() {
   const cb = cellsBar(), m = P.meter;
   const put = (t, c) => {
     if (t.steps != null && c.steps != null) t.steps = t.steps.slice(0, start * cb) + c.steps + t.steps.slice(need * cb);
-    else if (t.notes && c.notes) t.notes = t.notes.filter(x => x[0] < start * m || x[0] >= need * m).concat(c.notes.map(x => [x[0] + start * m, x[1], x[2]])).sort((a, b) => a[0] - b[0]);
+    else if (t.notes && c.notes) t.notes = t.notes.filter(x => x[0] < start * m || x[0] >= need * m).concat(c.notes.map(x => [x[0] + start * m, x[1], x[2], ...x.slice(3)])).sort((a, b) => a[0] - b[0]);
   };
   const ids = Object.keys(clip.tracks), one = id => P.tracks.find(x => x.id === id);
   if (bsel.track !== null) { const t = one(bsel.track), src = ids.length === 1 ? ids[0] : bsel.track; if (t && clip.tracks[src]) put(t, clip.tracks[src]); }   // トラック単位の選択: 1 トラックのコピーは、選んだトラックへ貼れる
@@ -371,7 +377,7 @@ function render() {
     const sc = fx && t.voice.name === 'sidechain';   // サイドチェインは mix を持たない。行のスライダーで「下げる深さ depth」を直接動かす
     const amp = sc ? h('input', { type: 'range', min: 0, max: 1, step: .05, value: t.voice.params.depth, title: 'depth(下げる深さ)' + t.voice.params.depth, onclick: ev => ev.stopPropagation(), oninput: ev => { t.voice.params.depth = +ev.target.value; ev.target.title = 'depth(下げる深さ) ' + t.voice.params.depth; dirty(); } })
       : fx ? h('input', { type: 'range', min: 0, max: 1, step: .05, value: t.voice.mix ?? 1, title: 'mix(エフェクトのかかり具合)' + (t.voice.mix ?? 1), onclick: ev => ev.stopPropagation(), oninput: ev => { t.voice.mix = +ev.target.value; ev.target.title = 'mix ' + t.voice.mix; dirty(); } })
-      : h('input', { type: 'range', min: 0, max: 1.5, step: .05, value: t.voice.amp, title: 'amp ' + t.voice.amp, onclick: ev => ev.stopPropagation(), oninput: ev => { t.voice.amp = +ev.target.value; ev.target.title = 'amp ' + t.voice.amp; dirty(); } });
+      : h('input', { type: 'range', min: 1, max: 127, step: 1, value: pen(t), title: '新しく置く音のベロシティ ' + pen(t) + '(音ごとのベロシティは、音の上でホイール)', onclick: ev => ev.stopPropagation(), oninput: ev => { t.pen = +ev.target.value; ev.target.title = '新しく置く音のベロシティ ' + t.pen; } });
     hd.append(h('div', { class: 'r1' }, h('span', { class: 'grip', draggable: true, title: 'ドラッグで並べ替え', ondragstart: ev => { dragTid = t.id; ev.dataTransfer.setData('text/plain', t.id); }, ondragend: () => { dragTid = null; } }, '⋮⋮'), h('span', { class: 'kd', style: `background:${kc}` }, kn), nm, del),
       h('div', { class: 'r2' }, m, s, amp));
     hd.title = (fx ? `${t.voice.name} → ` + (t.targets.length ? t.targets.map(i => (P.tracks.find(x => x.id === i) || {}).name).filter(Boolean).join('、') : '全トラック') : t.voice.name);
@@ -404,8 +410,9 @@ function render() {
   $('#bpm').value = P.bpm; $('#kroot').value = P.key.root; $('#kscale').value = P.key.scale;
 }
 // ステップのトラックの音(ブロック)。steps の「X」+ 続く「-」が 1 つの音。DAW のように、置く・動かす・長さを変える・クリックで消す
-const stepNotes = steps => { const out = []; for (let i = 0; i < steps.length; i++) if (steps[i] === 'X') { let l = 1; while (steps[i + l] === '-') l++; out.push([i, l]); i += l - 1; } return out; };
-const stepsOf = (notes, n) => { const a = Array(n).fill('.'); for (const [i, l] of notes) { a[i] = 'X'; for (let k = 1; k < l; k++) a[i + k] = '-'; } return a.join(''); };
+// ドラムは 1 マスごとにベロシティの文字(LEVELS)を持つ。サイドチェイン(fx)は X だけ
+const stepNotes = steps => { const out = []; for (let i = 0; i < steps.length; i++) if (steps[i] !== '.' && steps[i] !== '-') { let l = 1; while (steps[i + l] === '-') l++; out.push([i, l, steps[i]]); i += l - 1; } return out; };
+const stepsOf = (notes, n) => { const a = Array(n).fill('.'); for (const [i, l, c] of notes) { a[i] = c || 'X'; for (let k = 1; k < l; k++) a[i + k] = '-'; } return a.join(''); };
 function noteLayer(t, color) {
   const tc = totalCells();
   let notes = stepNotes(t.steps);
@@ -415,7 +422,8 @@ function noteLayer(t, color) {
   const draw = () => {
     layer.textContent = '';
     for (const n of notes) {
-      const e = h('div', { class: 'sn', style: `background:${color}` }); place(e, n);
+      const e = h('div', { class: 'sn', style: `background:${color}${t.kind === 'drum' ? ';opacity:' + velOpacity(levelVel(n[2])) : ''}`, title: t.kind === 'drum' ? 'velocity ' + levelVel(n[2]) + '(ホイールで変更)' : '' }); place(e, n);
+      if (t.kind === 'drum') e.onwheel = ev => { if (ev.ctrlKey || ev.metaKey) return; ev.preventDefault(); const v = clamp(levelVel(n[2]) + (ev.deltaY < 0 ? 4 : -4), 1, 127); n[2] = velLevel(v); t.pen = levelVel(n[2]); commit(); draw(); };
       e.onpointerdown = ev => { if (ev.metaKey || ev.ctrlKey) return; ev.stopPropagation(); if (ev.button === 2) return; drag(ev, n, ev.clientX > e.getBoundingClientRect().right - 8 ? 'resize' : 'move', e, false); };
       e.oncontextmenu = ev => { ev.preventDefault(); notes = notes.filter(x => x !== n); commit(); draw(); };
       layer.append(e);
@@ -443,7 +451,7 @@ function noteLayer(t, color) {
     if (ev.button !== 0 || ev.metaKey || ev.ctrlKey) return;
     const c = Math.floor(cellAt(ev) / snapC) * snapC;
     if (notes.some(o => c >= o[0] && c < o[0] + o[1])) return;
-    const n = [c, 1]; { let l = snapC; while (l > 1 && !free(n, c, l)) l--; n[1] = l; } notes.push(n); draw(); if (!playing) Audio_.hit(t, c);
+    const n = [c, 1, t.kind === 'drum' ? velLevel(pen(t)) : 'X']; { let l = snapC; while (l > 1 && !free(n, c, l)) l--; n[1] = l; } notes.push(n); draw(); if (!playing) Audio_.hit(t, c);
     drag(ev, n, 'resize', [...layer.children].find((_, i) => notes[i] === n) || layer.lastChild, true);
   };
   layer.oncontextmenu = ev => ev.preventDefault();
@@ -545,8 +553,8 @@ function settings(t) {
   }
   const snd = soundPicker(t.kind, t.voice.name, n => { t.voice.name = n; dirty(); render(); }, n => Audio_.audition({ ...t, voice: { ...t.voice, name: n } }));
   el.append(h('b', {}, t.name), colorInput(t), h('label', {}, '音色', snd));
-  const sl = (label, key, min, max, step, tgt = t.voice) => { const v = h('span', {}, String(tgt[key])); const r = h('input', { type: 'range', min, max, step, value: tgt[key], oninput: () => { tgt[key] = +r.value; v.textContent = r.value; dirty(); } }); el.append(h('label', {}, label, r, v)); };
-  sl('音量 amp', 'amp', 0, 1.5, .05); sl('定位 pan', 'pan', -1, 1, .1);
+  const sl = (label, key, min, max, step, tgt = t.voice) => { if (tgt === t && key === 'pen') t.pen = pen(t); const v = h('span', {}, String(tgt[key])); const r = h('input', { type: 'range', min, max, step, value: tgt[key], oninput: () => { tgt[key] = +r.value; v.textContent = r.value; dirty(); } }); el.append(h('label', {}, label, r, v)); };
+  sl('新しい音の velocity', 'pen', 1, 127, 1, t); sl('定位 pan', 'pan', -1, 1, .1);
   if (t.kind !== 'drum') sl('明るさ cutoff', 'cutoff', 20, 130, 1);
   if (t.kind !== 'drum') { const e = h('select', {}); ['pluck', 'stab', 'pad', 'swell'].forEach(x => e.append(new Option(({ pluck: 'pluck(短く)', stab: 'stab(ふつう)', pad: 'pad(ゆっくり)', swell: 'swell(膨らむ)' })[x], x))); e.value = t.voice.env; e.onchange = () => { t.voice.env = e.value; dirty(); }; el.append(h('label', {}, '音の形', e)); }
   return el;
@@ -582,7 +590,8 @@ function rollEl(t) {
   const drawNotes = () => { layer.textContent = ''; for (const n of t.notes) layer.append(noteEl(n)); };
   const changed = () => { dirty(); drawNotes(); render(); };
   const noteEl = n => {
-    const e = h('div', { class: 'nt' + (nsel.has(n) ? ' sel' : ''), style: `background:${kc}` }); place(e, n);
+    const e = h('div', { class: 'nt' + (nsel.has(n) ? ' sel' : ''), style: `background:${kc};opacity:${velOpacity(n[3])}`, title: 'velocity ' + n[3] + '(ホイールで変更。選択中の音はまとめて)' }); place(e, n);
+    e.onwheel = ev => { if (ev.ctrlKey || ev.metaKey) return; ev.preventDefault(); const d = ev.deltaY < 0 ? 4 : -4; for (const x of nsel.has(n) ? [...nsel] : [n]) x[3] = clamp(x[3] + d, 1, 127); t.pen = n[3]; Audio_.blip(midi(n[1]), t); changed(); };
     e.onpointerdown = ev => {
       if (ev.button === 2 || ev.altKey || ev.metaKey || ev.ctrlKey) return; ev.stopPropagation();
       if (ev.shiftKey) { nsel.has(n) ? nsel.delete(n) : nsel.add(n); drawNotes(); return; }   // ⇧+クリック: 選択に追加 / 外す
@@ -633,7 +642,7 @@ function rollEl(t) {
     if (ev.shiftKey) { box(ev); return; }
     if (nsel.size) { nsel.clear(); drawNotes(); }
     const [c0, m] = pos(ev), c = sn(c0), len = Math.min(Math.max(lastLen, snapC), tc - c);
-    const n = [c / CELLS_PER_BEAT, noteName(m), len / CELLS_PER_BEAT]; t.notes.push(n); Audio_.blip(m, t);
+    const n = [c / CELLS_PER_BEAT, noteName(m), len / CELLS_PER_BEAT, pen(t)]; t.notes.push(n); Audio_.blip(m, t);
     drawNotes(); const els = layer.querySelectorAll('.nt'); drag(ev, n, 'resize', els[els.length - 1], true);
   };
   curRoll = { t, changed, drawNotes, ensureBars: end => { const need = Math.ceil(end / P.meter - 1e-9); if (need > MAX_BARS) return false; if (need > P.bars) fitBars(need); return true; } };
@@ -670,7 +679,7 @@ function stemMenu(btn) {   // トラック追加メニュー: 検索・分類つ
 const KINDS = [['drum', 'ドラム(サンプル)'], ['bass', 'ベース'], ['chord', 'コード'], ['melody', 'メロディ'], ['fx', 'エフェクト(fx・サイドチェイン)']];
 function stemEditor(st) {
   const isNew = !st;
-  const e = st ? JSON.parse(JSON.stringify(st)) : { name: '新しい stem', kind: 'melody', description: '', source: 'user', voice: { name: 'prophet', amp: 0.6, pan: 0, cutoff: 100, env: 'stab' } };
+  const e = st ? JSON.parse(JSON.stringify(st)) : { name: '新しい stem', kind: 'melody', description: '', source: 'user', voice: { name: 'prophet', pan: 0, cutoff: 100, env: 'stab' } };
   const id = st ? st.id : null;
   const close = () => ov.remove();
   const fm = h('div', { class: 'fm' }), ta = h('textarea', { spellcheck: false });
@@ -681,7 +690,7 @@ function stemEditor(st) {
     const nm = h('input', { type: 'text', value: e.name, maxLength: 24, oninput: () => { e.name = nm.value; sync(); } });
     const ds = h('input', { type: 'text', value: e.description || '', maxLength: 120, oninput: () => { e.description = ds.value; sync(); } });
     const kd = h('select', {}); KINDS.forEach(([k, l]) => kd.append(new Option(l, k))); kd.value = e.kind;
-    kd.onchange = () => { const was = e.kind; e.kind = kd.value; if (e.kind === 'fx') e.voice = fxVoice('reverb'); else { if (was === 'fx') e.voice = { name: e.kind === 'drum' ? 'bd_haus' : 'prophet' }; else if ((e.kind === 'drum') !== (was === 'drum')) e.voice.name = e.kind === 'drum' ? 'bd_haus' : 'prophet'; e.voice = { amp: 0.8, pan: 0, cutoff: 100, env: 'stab', ...e.voice }; } build(); sync(); };
+    kd.onchange = () => { const was = e.kind; e.kind = kd.value; if (e.kind === 'fx') e.voice = fxVoice('reverb'); else { if (was === 'fx') e.voice = { name: e.kind === 'drum' ? 'bd_haus' : 'prophet' }; else if ((e.kind === 'drum') !== (was === 'drum')) e.voice.name = e.kind === 'drum' ? 'bd_haus' : 'prophet'; e.voice = { pan: 0, cutoff: 100, env: 'stab', ...e.voice }; } build(); sync(); };
     if (e.kind === 'fx') {
       fm.append(h('label', {}, '名前', nm), h('label', {}, '説明', ds), h('label', {}, '種類', kd));
       fxFields(fm, e.voice, sync, v => { e.voice = v; build(); sync(); });
@@ -690,7 +699,7 @@ function stemEditor(st) {
     const snd = soundPicker(e.kind, e.voice.name, n => { e.voice.name = n; sync(); }, n => Audio_.audition({ kind: e.kind, voice: { pan: 0, cutoff: 100, env: 'stab', ...e.voice, name: n } }));
     fm.append(h('label', {}, '名前', nm), h('label', {}, '説明', ds), h('label', {}, '種類', kd), h('label', {}, '音色', snd));
     const sl = (label, key, min, max, step) => { const v = h('span', { style: 'width:34px;text-align:right' }, String(e.voice[key])); const r = h('input', { type: 'range', min, max, step, value: e.voice[key], style: 'width:150px', oninput: () => { e.voice[key] = +r.value; v.textContent = r.value; sync(); } }); fm.append(h('label', {}, label, h('span', {}, r, v))); };
-    sl('音量 amp', 'amp', 0, 1.5, .05); sl('定位 pan', 'pan', -1, 1, .1);
+    sl('定位 pan', 'pan', -1, 1, .1);
     if (e.kind !== 'drum') {
       sl('明るさ cutoff', 'cutoff', 20, 130, 1);
       const en = h('select', {}); [['pluck', 'pluck(短く)'], ['stab', 'stab(ふつう)'], ['pad', 'pad(ゆっくり)'], ['swell', 'swell(膨らむ)']].forEach(([k, l]) => en.append(new Option(l, k))); en.value = e.voice.env || 'stab';
@@ -699,7 +708,7 @@ function stemEditor(st) {
     fm.append(h('button', { onclick: () => Audio_.audition({ kind: e.kind, voice: { pan: 0, cutoff: 100, env: 'stab', ...e.voice } }) }, '♪ 試聴'));
   };
   const applyJson = () => {
-    try { const o = JSON.parse(ta.value); Object.assign(e, { name: String(o.name ?? e.name), kind: o.kind, description: String(o.description ?? ''), source: o.source === 'ai' ? 'ai' : 'user', voice: o.kind === 'fx' ? { ...fxVoice(FXD(o.voice?.name) ? o.voice.name : 'reverb'), ...o.voice } : { amp: 0.8, pan: 0, cutoff: 100, env: 'stab', ...o.voice } }); build(); sync(); say('JSON を反映しました(保存はまだです)'); }
+    try { const o = JSON.parse(ta.value); Object.assign(e, { name: String(o.name ?? e.name), kind: o.kind, description: String(o.description ?? ''), source: o.source === 'ai' ? 'ai' : 'user', voice: o.kind === 'fx' ? { ...fxVoice(FXD(o.voice?.name) ? o.voice.name : 'reverb'), ...o.voice } : { pan: 0, cutoff: 100, env: 'stab', ...o.voice } }); build(); sync(); say('JSON を反映しました(保存はまだです)'); }
     catch (err) { say('JSON が読めません: ' + err.message, 1); }
   };
   const save = async () => {
@@ -804,12 +813,12 @@ const Audio_ = (() => {
     if (t.kind === 'fx') return;   // エフェクトはブラウザの試聴では鳴らさない
     dest = busOf(t.id).g;
     try {
-      if (t.kind !== 'drum') { for (const n of t.notes) if (Math.round(n[0] * CELLS_PER_BEAT) === cell) tone(t, midi(n[1]), when, n[2] * 60 / P.bpm, v.amp * .25); return; }
+      if (t.kind !== 'drum') { for (const n of t.notes) if (Math.round(n[0] * CELLS_PER_BEAT) === cell) tone(t, midi(n[1]), when, n[2] * 60 / P.bpm, ampV(n[3]) * .25); return; }
       const ch = t.steps[cell % t.steps.length];
-      if (/[Xxo1-9]/.test(ch)) drum(v.name, when, v.amp, v.pan);
+      if (LEVELS.includes(ch)) drum(v.name, when, ampV(levelVel(ch)), v.pan);
     } finally { dest = null; }
   }
-  const chordBlip = c => { init(); ac.resume(); const t = { kind: 'chord', voice: { name: 'saw', pan: 0, cutoff: 90, env: 'stab', amp: .5 } }; const base = NAMES.indexOf(c[0]) + 60, iv = cat.chords[c[1]]; iv.forEach(x => tone(t, base + x, ac.currentTime + .01, .5, .15 / Math.sqrt(iv.length))); };
+  const chordBlip = c => { init(); ac.resume(); const t = { kind: 'chord', voice: { name: 'saw', pan: 0, cutoff: 90, env: 'stab' } }; const base = NAMES.indexOf(c[0]) + 60, iv = cat.chords[c[1]]; iv.forEach(x => tone(t, base + x, ac.currentTime + .01, .5, .15 / Math.sqrt(iv.length))); };
   const midiHz = m => 440 * 2 ** ((m - 69) / 12);
   const noiseBuf = () => { if (noiseBuf.b) return noiseBuf.b; const b = ac.createBuffer(1, ac.sampleRate, ac.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; return noiseBuf.b = b; };
   const ENV = { pluck: [.004, .08], stab: [.01, .12], pad: [.25, .5], swell: [.3, .05] };
@@ -840,8 +849,8 @@ const Audio_ = (() => {
     if (cells >= seg.len && !$('#loop').checked) { stop(); return; }
     const pos = seg.from + cells % seg.len; setPlayhead(pos); follow(pos); requestAnimationFrame(frame);
   }
-  return { start, stop, seek, hit, chordBlip, blip: (m, t) => { init(); ac.resume(); tone(t, m, ac.currentTime, .25, (t.voice.amp) * .25); },
-    audition: async t => { if (t.kind === 'fx') { say('エフェクトは単独では鳴りません。▶ で曲を鳴らして確かめます'); return; } init(); ac.resume(); if (t.kind === 'drum') await loadSample(t.voice.name); const w = ac.currentTime + .02; if (t.kind === 'drum') drum(t.voice.name, w, t.voice.amp, t.voice.pan, 2); else tone(t, t.kind === 'bass' ? 36 : 64, w, .6, t.voice.amp * .3); } };
+  return { start, stop, seek, hit, chordBlip, blip: (m, t) => { init(); ac.resume(); tone(t, m, ac.currentTime, .25, ampV(pen(t)) * .25); },
+    audition: async t => { if (t.kind === 'fx') { say('エフェクトは単独では鳴りません。▶ で曲を鳴らして確かめます'); return; } init(); ac.resume(); if (t.kind === 'drum') await loadSample(t.voice.name); const w = ac.currentTime + .02; if (t.kind === 'drum') drum(t.voice.name, w, ampV(pen(t)), t.voice.pan, 2); else tone(t, t.kind === 'bass' ? 36 : 64, w, .6, ampV(pen(t)) * .3); } };
 })();
 // 再生中は、縦線を画面の同じ位置に置いたまま、トラック(とピアノロール)を左へ流す。横幅が狭くても先を見られる
 function follow(cell) {
@@ -873,16 +882,16 @@ function rollKeys(e) {
   if (mod && key === 'v' && lastCopy === 'notes' && noteClip) {
     const base = cursor / CELLS_PER_BEAT, end = base + Math.max(...noteClip.map(n => n[0] + n[2]));
     if (!R.ensureBars(end)) { say(`小節は最大 ${MAX_BARS} までです`, 1); return done(); }
-    const add = noteClip.map(n => [base + n[0], n[1], Math.min(n[2], P.bars * P.meter - base - n[0])]).filter(n => n[2] >= .25);
+    const add = noteClip.map(n => [base + n[0], n[1], Math.min(n[2], P.bars * P.meter - base - n[0]), ...n.slice(3)]).filter(n => n[2] >= .25);
     t.notes.push(...add); t.notes.sort((a, b) => a[0] - b[0]); nsel = new Set(add); R.changed(); renderBottom(); say(`${add.length} 個の音を貼り付けました`); return done();
   }
   if (!picked.length) return false;
   if (key === 'delete' || key === 'backspace') { t.notes = t.notes.filter(n => !nsel.has(n)); nsel.clear(); R.changed(); return done(); }
-  if (mod && key === 'c') { const b0 = Math.min(...picked.map(n => n[0])); noteClip = picked.map(n => [n[0] - b0, n[1], n[2]]); lastCopy = 'notes'; say(`${picked.length} 個の音をコピーしました(再生位置へ ⌘V)`); return done(); }
+  if (mod && key === 'c') { const b0 = Math.min(...picked.map(n => n[0])); noteClip = picked.map(n => [n[0] - b0, n[1], n[2], ...n.slice(3)]); lastCopy = 'notes'; say(`${picked.length} 個の音をコピーしました(再生位置へ ⌘V)`); return done(); }
   if (mod && key === 'd') {
     const b0 = Math.min(...picked.map(n => n[0])), b1 = Math.max(...picked.map(n => n[0] + n[2])), span = b1 - b0;
     if (!R.ensureBars(b1 + span)) { say(`小節は最大 ${MAX_BARS} までです`, 1); return done(); }
-    const add = picked.map(n => [n[0] + span, n[1], Math.min(n[2], P.bars * P.meter - n[0] - span)]).filter(n => n[2] >= .25);
+    const add = picked.map(n => [n[0] + span, n[1], Math.min(n[2], P.bars * P.meter - n[0] - span), ...n.slice(3)]).filter(n => n[2] >= .25);
     t.notes.push(...add); t.notes.sort((a, b) => a[0] - b[0]); nsel = new Set(add); R.changed(); renderBottom(); return done();
   }
   const dir = { arrowleft: [-snapC / CELLS_PER_BEAT, 0], arrowright: [snapC / CELLS_PER_BEAT, 0], arrowup: [0, e.shiftKey ? 12 : 1], arrowdown: [0, e.shiftKey ? -12 : -1] }[key];

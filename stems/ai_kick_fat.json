@@ -3,7 +3,6 @@
   "kind": "drum",
   "voice": {
     "name": "bd_fat",
-    "amp": 0.95,
     "pan": 0.0
   },
   "description": "太くて丸いキック",

@@ -1,0 +1,12 @@
+{
+  "name": "チェロ群(低域パッド)",
+  "kind": "chord",
+  "voice": {
+    "name": "work/samples/cello_section",
+    "pan": 0,
+    "cutoff": 95,
+    "env": "pad"
+  },
+  "description": "和音の下を支えるチェロ。根音+5度の空虚5度で印象派らしく(c1〜f4)",
+  "source": "ai"
+}

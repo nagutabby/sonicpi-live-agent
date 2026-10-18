@@ -1,0 +1,12 @@
+{
+  "name": "ヴァイオリン群(膨らむ和音)",
+  "kind": "chord",
+  "voice": {
+    "name": "work/samples/violin_section",
+    "pan": -0.25,
+    "cutoff": 110,
+    "env": "swell"
+  },
+  "description": "高域の弦をゆっくり膨らませる。印象派の薄く透ける響き / アートコアの泣きのパッド。和音を置く(g2〜d5)",
+  "source": "ai"
+}

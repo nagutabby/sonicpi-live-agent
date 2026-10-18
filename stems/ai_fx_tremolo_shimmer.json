@@ -1,0 +1,14 @@
+{
+  "name": "トレモロ(弦のきらめき)",
+  "kind": "fx",
+  "voice": {
+    "name": "tremolo",
+    "mix": 1,
+    "params": {
+      "phase": 0.125,
+      "depth": 0.4
+    }
+  },
+  "description": "32分の速さで音量を揺らす。弦のトレモロ奏法のように震える(アートコアの緊張にも)",
+  "source": "ai"
+}

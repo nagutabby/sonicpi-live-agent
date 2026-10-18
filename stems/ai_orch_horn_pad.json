@@ -1,0 +1,12 @@
+{
+  "name": "ホルン(パッド)",
+  "kind": "chord",
+  "voice": {
+    "name": "work/samples/horn",
+    "pan": 0,
+    "cutoff": 90,
+    "env": "pad"
+  },
+  "description": "遠くから響くようなホルンの和音。アタックの柔らかい持続音(a0〜f4)",
+  "source": "ai"
+}

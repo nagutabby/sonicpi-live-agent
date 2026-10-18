@@ -3,7 +3,6 @@
   "kind": "drum",
   "voice": {
     "name": "drum_cowbell",
-    "amp": 0.4,
     "pan": 0.0
   },
   "description": "カウベル。アクセントに",

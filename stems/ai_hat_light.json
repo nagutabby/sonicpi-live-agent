@@ -3,7 +3,6 @@
   "kind": "drum",
   "voice": {
     "name": "hat_gnu",
-    "amp": 0.35,
     "pan": 0.0
   },
   "description": "軽く開いたハット",

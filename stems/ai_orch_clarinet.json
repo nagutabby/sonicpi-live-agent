@@ -1,0 +1,12 @@
+{
+  "name": "クラリネット(旋律)",
+  "kind": "melody",
+  "voice": {
+    "name": "work/samples/clarinet",
+    "pan": 0.1,
+    "cutoff": 110,
+    "env": "stab"
+  },
+  "description": "暗く丸い中低域の旋律。印象派の影の色(d2〜fs5)",
+  "source": "ai"
+}

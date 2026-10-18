@@ -1,0 +1,12 @@
+{
+  "name": "グロッケン(きらめき)",
+  "kind": "melody",
+  "voice": {
+    "name": "work/samples/glockenspiel",
+    "pan": 0.3,
+    "cutoff": 120,
+    "env": "pluck"
+  },
+  "description": "高域のきらめき。旋律の最後や音の上のアクセントに(g4〜c7)",
+  "source": "ai"
+}
