@@ -439,19 +439,38 @@ def list_presets() -> list[dict]:
 
 
 def main() -> None:
-    """`daw_codegen.py stems`: stems/ の全ファイルを検証して、誤りの理由を出す(AI が stem を作ったあとの確認用)。"""
+    """CLI(AI が DAW のファイルを書いたあとの確認用)。
+    stems          stems/ の全ファイルを検証して、誤りの理由を出す
+    check <名前>   work/daw/<名前>.json を検証する(誤りはその理由を出す)
+    export <名前> [出力先.rb]   プロジェクトから Sonic Pi のコードを書き出す(既定 work/daw/<名前>.rb)"""
     import sys
-    if sys.argv[1:] != ["stems"]:
-        sys.exit("使い方: daw_codegen.py stems")
-    bad = 0
-    for f in sorted(STEMS.glob("*.json")):
+    args = sys.argv[1:]
+    usage = "使い方: daw_codegen.py stems | check <名前> | export <名前> [出力先.rb]"
+    if args == ["stems"]:
+        bad = 0
+        for f in sorted(STEMS.glob("*.json")):
+            try:
+                st = validate_stem(json.loads(f.read_text(encoding="utf-8")))
+                print(f"OK   {f.name}: {st['name']}({st['kind']} / {st['voice']['name']})")
+            except (ValueError, json.JSONDecodeError) as e:
+                bad += 1
+                print(f"誤り {f.name}: {e}")
+        sys.exit(2 if bad else 0)
+    if len(args) in (2, 3) and args[0] in ("check", "export") and (args[0] == "export" or len(args) == 2):
+        src = ROOT / "work" / "daw" / f"{ident(args[1], 'song')}.json"
         try:
-            st = validate_stem(json.loads(f.read_text(encoding="utf-8")))
-            print(f"OK   {f.name}: {st['name']}({st['kind']} / {st['voice']['name']}){' [AI]' if st['source'] == 'ai' else ''}")
-        except (ValueError, json.JSONDecodeError) as e:
-            bad += 1
-            print(f"誤り {f.name}: {e}")
-    sys.exit(2 if bad else 0)
+            proj = json.loads(src.read_text(encoding="utf-8"))
+            p = validate(proj)
+        except (OSError, ValueError) as e:  # JSONDecodeError は ValueError
+            sys.exit(f"誤り {src.name}: {e}")
+        if args[0] == "check":
+            print(f"OK   {src.name}: {p['bpm']:g} BPM / {p['bars']} 小節 / " + " ".join(f"{t['id']}({t['kind']})" for t in p["tracks"]))
+            return
+        out = ROOT / args[2] if len(args) == 3 else src.with_suffix(".rb")
+        out.write_text(generate(proj), encoding="utf-8")
+        print(f"書き出しました: {out}(次に uv run scripts/live_check.py {out.relative_to(ROOT)})")
+        return
+    sys.exit(usage)
 
 
 if __name__ == "__main__":

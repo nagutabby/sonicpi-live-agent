@@ -47,17 +47,55 @@
 - **記録**: `work/notes.md` に `つなぎ:` の行で書く。変更したら更新し、切り替えを1行残す。
 - **使い方**: コード進行の5案(`live-structure`)とコードのステム提案(`live-next-stem`)で、選ばれたつなぎ方を使う。使った箇所(どの小節間か)を示す。AI が勝手に足し引きしない。スタイル①は、ユーザーが先に書く方針のまま。
 
-## コードの書き方(規約。詳細は `docs/coding-rules.md`)
+## DAW の使い方(AI エージェント向け)
 
-拍子に基づいて直感的に書き、人が拡張しやすくするための規約。AI が書くコードも、スタイル①への提案も合わせる(ユーザー自身の書き方があれば優先)。
+曲づくりは、**DAW のファイルを読み書きして行う**(Sonic Pi のコードは手書きしない。DAW が生成する)。ユーザーは GUI(http://127.0.0.1:8765/)で見て・聴いて・直し、AI はファイルを書く。どちらが書いても同じファイルなので、混ぜて使える。
 
-- **既定は 1小節 = 4拍 = 16マス**。リズムはグリッド文字列(`x` ふつう `X` 強 `o` 弱 `.` 休み `-` 伸ばし。空白と `|` は無視。1小節のマス数の倍数)で書き、`sleep` の足し算で書かない。付点8分は3マス(`x--`)。3連符・3/4・6/8 などは、先頭で `grid_res`(1拍のマス数)と `grid_meter`(1小節の拍数)を1曲で1つに固定して書く。
-- **ステムごとの記法**: ドラム・ベース・コード = グリッド(ベース・コードの音程は進行 `grid_prog` の `on:`)/ ボーカルチョップ = グリッド + `from:`(元 wav の拍位置。wav は加工しない)/ メロディ = `[拍の位置, 音名, 長さ]` / FX = 小節単位。ヘルパーは `docs/live-grid.rb`(`current.rb` の先頭に貼る。実装済みは `grid_play` `grid_chop`)。
-- **変数**: リズム・音(`grid_voice`)・進行(`grid_prog`)・元 wav(`grid_clip`)を別々の変数にして先頭にまとめ、再利用する。`define` の名前は `grid_` で始める。
-- **演算(連結・間引き・ずらし)は、ユーザーが求めたとき、または同じ変数を3回以上少しずつ変えて書くときだけ**。使ったら理由を添える。
-- `use_bpm` は1箇所。`grid_play` / `grid_chop` は自分で `sleep` するので、その `live_loop` に `sleep` を足さない。
-- **ヘルパー関数(`docs/live-grid.rb`)は、必要なら拡張してよい。ただし変更する前に、必ずユーザーに確認する**(何を足すか・理由・影響を示して了承を得る)。
-- 提案の前に `uv run scripts/live_check.py <file.rb>` を通す(Sonic Pi の API とグリッド記法の規約を一度に検査する。誤りは直してから渡す。警告は結果をそのまま伝える)。
+**起動**: `uv run scripts/daw_server.py`(ローカル専用。起動済みか `curl -s localhost:8765/api/version` で確かめる)。ファイルを書き換えると、画面が自動でリロードされる(ユーザーが編集中のときは、保存のあとで反映される)。
+
+**ファイル**
+
+| 何 | どこ | 備考 |
+|---|---|---|
+| 曲(プロジェクト) | `work/daw/<名前>.json` | AI が主に書く。いちばん新しい曲が、画面で最初に開く。`work/` は git に入れない |
+| 音色の雛形(stem) | `stems/<id>.json` | 音色だけ。追加すると必ず空のトラックになる(形は下の「stem」) |
+| 曲まるごとの保存(プリセット) | `presets/<id>.json` | 曲の状態の写し。AI が新しく作る必要は少ない |
+| 生成コード | `work/daw/<名前>.rb` | `daw_codegen.py export` で作る。手で直さない(次の生成で消える) |
+
+**手順(1 本ずつ足す)**
+1. `work/daw/<名前>.json` を読む(なければ新しく作る)。ユーザーの BPM・キー・コード進行・小節数は変えない(変えたいときは案として出す)。
+2. 足す 1 本(トラック)だけを JSON に書く。音色名は `uv run scripts/sonicpi.py synths|fx [名前]` / `sonicpi.py samples [グループ]` で確かめる(`voice.name` に存在しない名前を書くと検証で誤りになる)。
+3. `uv run scripts/daw_codegen.py check <名前>`(誤りは理由が出る。直す)→ `uv run scripts/daw_codegen.py export <名前>` → `uv run scripts/live_check.py work/daw/<名前>.rb`(Sonic Pi の API の検査。終了コード 2 は直す。警告は結果をそのまま伝える)。
+4. ユーザーに、画面を見てほしい点と、聴いて確かめる箇所(何小節目)を伝える。音を出すのは GUI の ▶(ブラウザの簡易音。エフェクトは鳴らない)か「● Sonic Pi で録音」(**録音中はスピーカーから音が鳴る。実行前に一言伝える**)。
+5. スタイル②では、採用が決まったら、`work/current.rb` に反映する(旧版を `work/history/` に退避してから `daw_codegen.py export <名前> work/current.rb`。GUI の「Sonic Pi コード」タブの書き出しでも同じ)。
+
+**プロジェクト JSON の形**(値は検証され、範囲外は直され、不正なものは誤りになる)
+
+```json
+{"name": "song", "bpm": 140, "bars": 8, "meter": 4, "key": {"root": "c", "scale": "minor"},
+ "prog": [["c", "minor7"], null],
+ "markers": [{"bar": 0, "name": "イントロ"}],
+ "tracks": [
+  {"id": "kick", "name": "キック", "kind": "drum", "voice": {"name": "bd_haus", "amp": 1, "pan": 0}, "steps": "X... .... X... ....", "color": "#ff8f6b"},
+  {"id": "bass", "name": "ベース", "kind": "bass", "voice": {"name": "sine", "amp": 0.8, "pan": 0, "cutoff": 90, "env": "pluck"}, "notes": [[0, "c2", 2.75]]},
+  {"id": "sc", "name": "サイドチェイン", "kind": "fx", "voice": {"name": "sidechain", "params": {"depth": 0.8, "release": 0.4}}, "targets": ["bass"], "steps": "X... .... X... ...."}]}
+```
+
+- **全体**: `bpm` 40〜240 / `bars` 1〜32 / `meter` は 1 小節の拍数(既定 4)/ `key.root` は `c cs d eb e f fs g ab a bb b`、`key.scale` は `major|minor`。トラックは最大 24。
+- **`prog`(コード進行)**: 小節ごとに `[根音, 種類]`(種類は `major minor major7 minor7 dom7 sus2 sus4 diminished m9 major9 add9`)。`null` は「コードなし」。音は持たず、ピアノロールにコードトーンを見せるガイド。
+- **`kind`**: `drum`(サンプルを鳴らす)/ `bass` `chord` `melody`(シンセ。音程つきの音)/ `fx`(エフェクト)。
+- **ドラムの `steps`**: 1 小節 = 16 マス(1 マス = 16 分音符)。`X` = 音、`.` = 休み、`-` = 直前の音を 1 マス伸ばす。空白と `|` は無視。長さは `bars × meter × 4`(足りなければ休みで埋める)。音の強さは持たない(`x` `o` `1`〜`9` は `X` になる)。
+- **`notes`(bass・chord・melody)**: `[拍の位置, 音名, 長さ(拍)]`。位置と長さは 0.25 拍刻み。音名は `c4` `eb3` `fs2` のように、音名 + `s`(シャープ)/ `b`(フラット)+ オクターブ(GUI の範囲は `c1`〜`c7`)。和音は、同じ位置に複数の音を置く。曲の外の音は末尾で切れる。
+- **`voice`**: `amp` 0〜2 / `pan` -1〜1 / シンセは `cutoff` 20〜130 と `env`(`pluck` 短く / `stab` ふつう / `pad` ゆっくり / `swell` 膨らむ)。ドラムは `name` がサンプル名、シンセは `name` がシンセ名。
+- **`fx`**: `voice.name` は `reverb echo distortion lpf hpf flanger tremolo slicer wobble bitcrusher sidechain`。`mix` 0〜1 と、エフェクトごとの `params`(名前と範囲は `daw_codegen.FX_INFO`。範囲外は丸められる)。`targets` は対象のトラック id(空なら全トラック)。`sidechain` だけは `steps`(X の位置で対象の音量を下げ、`release` 拍かけて戻す。キックと同じ位置にする)を持つ。対象の組み合わせが同じトラックは 1 つの `with_fx` を共有する。ソロはエフェクトに効かない(ミュートで外す)。
+- **ほか**: `id` は英小文字・数字・`_`(先頭は英字)/ `mute` `solo`(ソロは 1 つだけ)/ `color`(`#rrggbb`)/ `markers` はセクション名(`bar` は 0 始まり)。
+
+**stem**: `stems/<id>.json` に `{"name": 表示名, "kind": "drum|bass|chord|melody|fx", "voice": {…}, "description": 一言, "source": "ai"}`。パターン・音は持たない(`kind: "fx"` の voice は `{"name", "mix", "params"}`)。書いたら `uv run scripts/daw_codegen.py stems` で検証する。ユーザーは GUI の「ライブラリ」で名前・音色を直せる。
+
+**注意**
+- 既存の曲を上書きするときは、先に読んでから(ユーザーが GUI で直した内容を消さない)。新しい曲は、新しい名前で作る。
+- 画面を開いたまま書くとリロードされる。ユーザーが操作中なら、書く前に一言伝える。
+- 検証コマンドの結果(誤り・警告)は、そのままユーザーに伝える。
 
 ## 構成の確認(必須。曲を完成させるまでに)
 
@@ -121,8 +159,7 @@ Drums → Bass → Chords → Melody →(任意: ボーカル。ボコーダー�
 
 - 音は **Sonic Pi の内蔵シンセ・FX・サンプルで鳴らすコード**として提案する。外部の音源・他曲の音声の流用、他人の旋律・歌詞の複製は提案しない。サンプルは Sonic Pi 同梱のものを使ってよい。ユーザーが用意した wav は、ユーザーが `sample` で指しているときだけ扱う。
 - **例外: NEUTRINO で作るボーカル**(下の「ボーカル」節)。エージェントが生成して `work/vocals/` に置く wav を、ボコーダー処理してから `sample` で鳴らす提案に限り認める。
-- `define` の名前は、Sonic Pi のコア API の名前(`at` など)と衝突させない(実行時エラーになるが `live_check.py` では検出できない)。`on_air` のように、固有の名前にする(グリッド記法のヘルパーは `grid_` で始める)。
-- コードは Sonic Pi で動く形で書く。`live_loop` には必ず `sleep`(または `sync`。`grid_play` / `grid_chop` は中で `sleep` するので可)を入れる。シンセ・FX・引数名は `uv run scripts/sonicpi.py synths|fx [名前]`、サンプル・コード・スケールの名前は `sonicpi.py samples [グループ]|chords|scales` で確認し、提案の前に `uv run scripts/live_check.py <file.rb>`(Sonic Pi の API と `docs/coding-rules.md` の規約を検査)を通す(終了コード 2 は直してから渡す)。
+- シンセ・FX・サンプルなどの名前は、`sonicpi.py synths|fx [名前]` / `samples [グループ]|chords|scales` で確かめる。提案の前に `uv run scripts/live_check.py <file.rb>` を通す(終了コード 2 は直してから渡す)。
 - 既存ファイルの上書きは確認してから。`work/` 配下は git 管理しない(`.gitignore`)。
 - 認証が必要なとき(`gh auth login` など)は、必要なコマンドをユーザーに提示して**ユーザー自身に実行してもらう**。トークン・鍵の値をファイル・ログに書かない。
 
@@ -159,9 +196,9 @@ Drums → Bass → Chords → Melody →(任意: ボーカル。ボコーダー�
 - 録音からメロディ(単音のハミング・口笛。ユーザー自身の録音に限る): `record_mic.py [--bpm N] [--count-in 1]`(Enter で録音開始、もう一度 Enter で停止 → `work/recordings/rec_vN.mp3`。`--bpm` を付けるとスピーカーからキックを拍ごとに鳴らし、最初の4拍は数えるだけで次の拍から歌う。横に BPM を記録した `.json` ができる。イヤホンだとキックが入らない)/ `melody_from_audio.py <mp3> --key "F minor" [--bpm N] [--octave N] [--min-note 0.1] [--grid 4] [--kick-hp 130] [--no-kick]`(YIN で音程を検出 → 全体の音程ずれを補正 → キーの音階へ寄せる → 拍に量子化 → `[拍の位置, 音名, 長さ]` の `live_loop` を `work/proposals/<名>_melody.rb` に出力。`.json` があれば BPM・キックの拍合わせ・130Hz 以下の除去を自動で行う。キーは必ず指定、BPM は省略すると `current.rb` の `use_bpm`)。出力は `live_check.py` を通し、聴いて確かめる(エージェントは聴けないので、結果は検出した音名と位置の数値で伝える)。手順・お題・調整表は `docs/melody-from-audio.md`、お題の伴奏は `docs/melody-exercise.rb`。
 - 録音からリズム(手拍子・机・ビートボックス。ユーザー自身の録音に限る。**一度の録音で取るのは1ステムだけ**): `record_mic.py --bpm N --count-only`(数えのキックだけ鳴って止まる)で録り、`rhythm_from_audio.py <mp3> [--stem kick|snare|hat|clap] [--bpm N] [--grid 4] [--bars N] [--threshold 0.25]`(音の頭を検出 → 最大音量で `X x o` → 拍に量子化 → グリッド文字列と `grid_play` の `live_loop` を `work/proposals/<名>_rhythm.rb` に出力。種類の自動判定はしない。`--stem` は鳴らす音の選択)。出力(メロディも同じ)は `grid_voice` / `grid_play` を使うので、`docs/live-grid.rb` のヘルパーを先頭に貼らないと Sonic Pi で動かない(単体で試すときは、ヘルパーを前に付けた実行用ファイルを作って渡す)。叩く音が小さいと雑音と区別できず結果が不安定なので、数えのキックと同じくらいの音量で叩いてもらう(ピークの目安 0.05 以上。標準エラーの音量を見る)。数えのあと、すぐ次の拍から叩き始める。お題は `docs/rhythm-exercise.rb`。聴いて確かめる。
 - GUI で作曲・確認: `daw_server.py [--port 8765] [--open]`(ローカル専用 Web アプリ http://127.0.0.1:8765/。DAW 風のタイムライン・ピアノロール(ベース・コード・メロディはすべて音程つきの音を置く。コード進行は構成音を見せるガイド)・ドラムは横長のバーで音を置く。プロジェクトは `work/daw/<名>.json`、トラックの雛形(stem。音色だけを持ち、追加すると必ず空のトラック)は `stems/<id>.json` に事前登録(GUI の「空のトラックを追加(stem)」・「ライブラリ」タブで追加・登録・削除。トラックの追加・削除も GUI で動的に行える)。プリセットは曲の状態まるごと(BPM・小節数・キー・コード進行・全トラックの音色とパターン/音)を `presets/<id>.json` に保存(上部の「💾 プリセット保存」、プルダウンで読み込み)。`daw_codegen.py` が Sonic Pi のコード(グリッド記法)に変換して書き出す。ブラウザ内の試聴は、シンセが簡易シンセ(Sonic Pi の音ではない)、サンプル(ドラム)は Sonic Pi 内蔵の本物のサンプル。操作: ズーム(幅 ＋－・Ctrl+ホイール)・スナップ(1拍・1/2拍・1/4拍)・ルーラーのクリックで再生位置・⇧+クリック2回でループ範囲(ブラウザの試聴のみ)・ダブルクリックでセクション名(`markers`)・⌘+クリックで小節選択と ⌘C/⌘V・ピアノロールの音の選択(⇧+クリック/⇧+ドラッグ・⌘A・⌘D・矢印・Delete)・⌘Z/⌘⇧Z・トラックの並べ替え(⋮⋮)と色(`color`)・右上「？」にショートカット一覧。音色は検索・分類・説明つきの選択画面で選ぶ(シンセ 64 種・サンプル 206 種)。本物の音は「Sonic Pi で録音」)。
-- **AI が stem を作る**: `stems/<id>.json`(id は英小文字・数字・`_`、先頭は英字)を書く。形は `{"name": 表示名, "kind": "drum|bass|chord|melody|fx", "voice": {"name": サンプル名(drum)またはシンセ名, "amp": 0〜2, "pan": -1〜1, "cutoff": 20〜130, "env": "pluck|stab|pad|swell"}, "description": 一言, "source": "ai"}`(cutoff・env は drum 以外)。stem は音色だけでパターン・音は持たない。**エフェクト(`kind: "fx"`)** の voice は `{"name": reverb|echo|distortion|lpf|hpf|flanger|tremolo|slicer|wobble|bitcrusher|sidechain, "mix": 0〜1, "params": {…}}`(パラメータ名と範囲は `daw_codegen.FX_INFO`)。曲のトラックでは `targets`(対象トラック id。空なら全トラック)を持ち、`with_fx` で対象の `live_loop` を包む。`sidechain` だけは `steps`(X の位置で対象の音量を下げて戻す。キックと同じ位置にする)を持つ。ソロはエフェクトに効かない(ミュートで外せる)。ブラウザの試聴ではエフェクトは鳴らない(Sonic Pi で録音して確かめる)。書いたら `uv run scripts/daw_codegen.py stems` で検証し(誤りは直す)、ユーザーには GUI の「ライブラリ」→「編集」で名前・音色・JSON を直せると伝える。
+- **AI が stem を作る・曲を書く**: 上の「DAW の使い方(AI エージェント向け)」。確認は `uv run scripts/daw_codegen.py stems|check <名前>|export <名前>`。
 - `learning_log.py index|search <語>`(学習ログの索引の作り直し・検索)
-- `live_render.py <files…> --seconds N` / `live_check.py <file.rb>`(Sonic Pi の API の検査(シンセ・FX・引数・サンプル・コード・スケールの名前)+ グリッド記法の規約の検証: マス数が1小節のマス数の倍数か、`from:` の個数・範囲、`grid_` の接頭辞、二重の `sleep`、演算の使用、立ち上がりの言葉。終了コード 0 / 1 警告 / 2 誤り) / `wav_stats.py <wav>` / `wav_to_mp3.py <wav> [-o out.mp3] [--bitrate 256k] [--force]` / `sonicpi.py synths|fx [名前]` / `play.sh <wav>` / `setup.sh`。
+- `live_render.py <files…> --seconds N` / `live_check.py <file.rb>`(Sonic Pi の API の検査(シンセ・FX・引数・サンプル・コード・スケールの名前)。終了コード 0 / 1 警告 / 2 誤り) / `wav_stats.py <wav>` / `wav_to_mp3.py <wav> [-o out.mp3] [--bitrate 256k] [--force]` / `sonicpi.py synths|fx [名前]` / `play.sh <wav>` / `setup.sh`。
 
 ## スキル(`.claude/skills/`)
 
