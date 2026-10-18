@@ -255,7 +255,9 @@ def validate(project: dict) -> dict:
             tracks.append(fx_track(t, tid, v, bars * cells_bar))
             continue
         pool = cat["samples"] if kind == "drum" else cat["synths"]
-        if kind == "drum" and is_vocal_wav(name):   # 歌声の wav(work/vocals 内)は、サンプル名の代わりにパスで指せる
+        if kind == "drum" and is_vocal_wav(name):   # 歌声・取り込んだ wav(work/vocals, work/samples 内)は、サンプル名の代わりにパスで指せる
+            pass
+        elif kind != "drum" and name not in pool and sample_pitches(name):   # 音名つき wav のフォルダ(work/samples/<楽器>)は、音程つきサンプル楽器になる
             pass
         elif name not in pool:
             raise ValueError(f"{tid}: 音色が見つかりません: {name}")
@@ -265,7 +267,7 @@ def validate(project: dict) -> dict:
         if kind != "drum":
             voice["cutoff"] = int(num(v.get("cutoff"), 20, 130, 100))
             voice["env"] = v.get("env") if v.get("env") in ENVS else "stab"
-            if num(v.get("glide"), 0, 2, 0) > 0:   # グライド(ポルタメント): 次の音に続くとき、音の最後の glide 拍で次の音程へ滑る
+            if num(v.get("glide"), 0, 2, 0) > 0 and name in pool:   # グライド(ポルタメント): 次の音に続くとき、音の最後の glide 拍で次の音程へ滑る
                 voice["glide"] = round(num(v.get("glide"), 0, 2, 0), 2)
             if name.startswith("mod_"):   # mod_* は音程を周期的に揺らせる。ビブラート = 小さい mod_range をゆっくり揺らす
                 voice["mod_range"] = round(num(v.get("mod_range"), 0, 12, 0.4), 2)    # 揺れの幅(半音)
@@ -370,13 +372,38 @@ def bend_rows(notes: list, glide: float):
     return rows
 
 
+WAV_DIRS = ("vocals", "samples")   # ユーザー/AI が置いた wav の置き場(work/ の下)
+SAMPLE_PITCH = re.compile(r"^([A-Ga-g])([#b]?)(-?\d)$")   # ファイル名の `_` 区切りの 1 語が音名(例 A#3, Bb2, C4)
+
+
 def is_vocal_wav(name) -> bool:
-    """work/vocals/ の中の、実在する .wav への絶対パスか(歌声の wav を DAW のドラム行で鳴らす用)。"""
+    """work/vocals/ か work/samples/ の中の、実在する .wav への絶対パスか(歌声・取り込んだ wav を DAW のドラム行で鳴らす用)。"""
     try:
         p = Path(str(name)).resolve()
-        return p.suffix == ".wav" and p.is_file() and p.is_relative_to((ROOT / "work" / "vocals").resolve())
+        return p.suffix == ".wav" and p.is_file() and any(p.is_relative_to((ROOT / "work" / d).resolve()) for d in WAV_DIRS)
     except (OSError, ValueError):
         return False
+
+
+def sample_pitches(name) -> list[tuple[int, str]]:
+    """work/samples/ の中のフォルダにある、音名つきの wav の一覧 [(MIDI 番号, 絶対パス)]。音名はファイル名の `_` 区切りの 1 語から読む。
+    同じ音が複数あれば(ラウンドロビン・マイク違い)、名前順で最初の 1 つ。フォルダでなければ空。"""
+    try:
+        d = Path(str(name)).resolve()
+        if not (d.is_dir() and d.is_relative_to((ROOT / "work" / "samples").resolve())):
+            return []
+    except (OSError, ValueError):
+        return []
+    found: dict[int, str] = {}
+    for f in sorted(d.rglob("*.wav")):
+        for tok in f.stem.split("_"):
+            m = SAMPLE_PITCH.match(tok)
+            if m:
+                letter, acc, octv = m.groups()
+                midi = 12 * (int(octv) + 1) + {"c": 0, "d": 2, "e": 4, "f": 5, "g": 7, "a": 9, "b": 11}[letter.lower()] + {"#": 1, "b": -1, "": 0}[acc]
+                found.setdefault(midi, str(f))
+                break
+    return sorted(found.items())
 
 
 def sample_ref(name: str) -> str:
@@ -415,6 +442,15 @@ def opts_str(voice: dict, kind: str) -> str:
         if "mod_range" in voice:
             parts += [f"mod_range: {voice['mod_range']:g}", f"mod_phase: {voice['mod_phase']:g}", "mod_wave: 3"]   # 3 = サイン波
     return ", ".join(parts)
+
+
+def sample_opts(voice: dict) -> str:
+    """音程つきサンプル楽器の sample のオプション。env は attack / release(拍)、sustain は音の長さ l。"""
+    att, rel = ENV_BEATS[voice["env"]]
+    parts = [f"amp: {voice['amp']:g}"]
+    if voice.get("pan"):
+        parts.append(f"pan: {voice['pan']:g}")
+    return ", ".join(parts + [f"cutoff: {voice['cutoff']}", f"attack: {att:g}", f"release: {rel:g}"])
 
 
 def active(tracks: list[dict]) -> list[dict]:
@@ -464,6 +500,15 @@ def generate(project: dict) -> str:
             out += [f"voice_{i} = grid_voice :sample, {sample_ref(v['name'])}, {opts_str(v, 'drum')}",
                     f"pat_{i} = \"{fmt_pattern(t['steps'], res, meter)}\""]
             loops[i] = [f"live_loop :{i} do grid_play voice_{i}, pat_{i} end"]
+        elif sample_pitches(v["name"]):   # 音名つき wav: いちばん近い音の wav を rate で音程をずらして鳴らす
+            table = ", ".join(f"[{m}, {json.dumps(path)}]" for m, path in sample_pitches(v["name"]))
+            out.append(f"smp_{i} = [{table}]   # [MIDI 番号, wav]")
+            notes = ", ".join(f"[{n[0]:g}, {pitch_sym(n[1])}, {n[2]:g}]" for n in t["notes"])
+            out.append(f"notes_{i} = [{notes}]   # [拍の位置, 音名, 長さ(拍)]")
+            loops[i] = [f"live_loop :{i} do", "  t = 0", f"  notes_{i}.each do |b, n, l|", "    sleep b - t",
+                        f"    m, f = smp_{i}.min_by {{ |k, _| (k - note(n)).abs }}",
+                        f"    sample f, rate: 2**((note(n) - m) / 12.0), {sample_opts(v)}, sustain: l",
+                        "    t = b", "  end", f"  sleep {total} - t", "end"]
         else:
             rows = bend_rows(t["notes"], v.get("glide", 0))
             bent = rows is not None

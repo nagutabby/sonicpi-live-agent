@@ -67,3 +67,14 @@ def test_clip_wav_drops_lead_bar_and_keeps_length(tmp_path):
         y = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
     assert len(y) == 2 * sr and y[0] == 1000 and y[-1] == 0  # 4 拍ぶん(足りない分は無音)、末尾はフェード
 
+
+
+def test_detect_lead_beats_depends_on_leading_rest(tmp_path):
+    tl = tmp_path / "t.timing.lab"
+    beat = 60 / 130 * 1e7
+    # 最初が音符: pau のあと 4 拍目に母音 → 頭の無音 4 拍
+    tl.write_text(f"0 {int(4 * beat)} pau\n{int(4 * beat)} {int(5 * beat)} a\n")
+    assert ns.detect_lead_beats(tl, {"bpm": 130, "notes": [["あ", "C5", 1]]}) == 4.0
+    # 最初が 0.5 拍の休符: 最初の発音が 0.5 拍目 → 頭の無音なし
+    tl.write_text(f"0 {int(0.5 * beat)} pau\n{int(0.5 * beat)} {int(1.5 * beat)} a\n")
+    assert ns.detect_lead_beats(tl, {"bpm": 130, "notes": [["", "", 0.5], ["あ", "C5", 1]]}) == 0.0

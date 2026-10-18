@@ -12,7 +12,7 @@ phrase.json の例(拍子は 4/4 固定。音符は小節をまたがない):
   歌詞の記号: っ(促音)/ ー(直前の母音を伸ばす)/ '(母音脱落。「す'」は子音のみ)。発音どおりに書く(は→わ、へ→え、を→お)。
 
 出力は work/vocals/<phrase名>_vN.{musicxml,wav,f0,...}(既存は上書きせず版を進める)。
-同時に、頭の 1 小節の無音を捨てて譜面の拍数で切った <名>_vN_clip.wav も作る(Sonic Pi の `sample` を小節線に揃える用)。
+同時に、頭の無音(譜面の最初が音符なら 1 小節。最初が休符なら付かないことがある。timing.lab から検出)を捨てて譜面の拍数で切った <名>_vN_clip.wav も作る(Sonic Pi の `sample` を小節線に揃える用)。
 ~/neutrino(環境変数 NEUTRINO_DIR)は読み取り専用のまま使い、書き込みはしない。
 """
 
@@ -130,6 +130,24 @@ def phrase_beats(spec: dict) -> float:
     return sum(float(n[2]) for n in spec["notes"])
 
 
+def detect_lead_beats(timing: Path, spec: dict) -> float:
+    """NEUTRINO が譜面の前に足した無音の拍数(0 か 4 の倍数)。timing.lab の最初の発音と、譜面の最初の音符の位置の差から求める。
+
+    譜面の最初が音符だと 1 小節(4 拍)の無音が付くが、最初が休符だと付かないことがある(休符がそのまま頭の無音になる)。"""
+    first_note = 0.0
+    for raw in spec["notes"]:
+        _lyric, pitch, beats, _flags = split_note(raw)
+        if pitch:
+            break
+        first_note += beats
+    spb = 60.0 / spec["bpm"]
+    for ln in timing.read_text().splitlines():
+        parts = ln.split()
+        if len(parts) == 3 and parts[2] not in ("pau", "sil", "br"):
+            return max(0.0, 4.0 * round((int(parts[0]) * 1e-7 / spb - first_note) / 4.0))
+    return LEAD_BEATS
+
+
 def clip_wav(wav: Path, bpm: float, beats: float, lead_beats: float = LEAD_BEATS) -> Path:
     """頭の無音(lead_beats)を捨て、beats 拍ぶんだけ切り出す。末尾に 20ms のフェードをかけて <名>_clip.wav に書く。"""
     with wave.open(str(wav), "rb") as w:
@@ -182,8 +200,10 @@ def main() -> int:
 
     spec = json.loads(args.phrase.read_text(encoding="utf-8"))
     if args.clip_from:
-        out = clip_wav(args.clip_from, spec["bpm"], phrase_beats(spec))
-        print(f"出力: {out}({phrase_beats(spec):g} 拍 @ {spec['bpm']} BPM)")
+        tl = args.clip_from.with_suffix(".timing.lab")
+        lead = detect_lead_beats(tl, spec) if tl.is_file() else LEAD_BEATS
+        out = clip_wav(args.clip_from, spec["bpm"], phrase_beats(spec), lead)
+        print(f"出力: {out}({phrase_beats(spec):g} 拍 @ {spec['bpm']} BPM、頭の無音 {lead:g} 拍を捨てた)")
         return 0
 
     neutrino = Path(os.environ.get("NEUTRINO_DIR", "~/neutrino")).expanduser()
@@ -217,8 +237,9 @@ def main() -> int:
     if args.dry_run:
         print("(dry-run)")
         return 0
-    clip = clip_wav(paths["wav"], spec["bpm"], phrase_beats(spec))
-    print(f"出力: {paths['wav']}\n切り出し(Sonic Pi 用): {clip}({phrase_beats(spec):g} 拍)")
+    lead = detect_lead_beats(paths["timing.lab"], spec)
+    clip = clip_wav(paths["wav"], spec["bpm"], phrase_beats(spec), lead)
+    print(f"出力: {paths['wav']}\n切り出し(Sonic Pi 用): {clip}({phrase_beats(spec):g} 拍、頭の無音 {lead:g} 拍を捨てた)")
     return 0
 
 

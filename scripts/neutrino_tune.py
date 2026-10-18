@@ -33,6 +33,7 @@ from neutrino_sing import (
     STEPS,
     add_neutrino_args,
     clip_wav,
+    detect_lead_beats,
     neutrino_options,
     parse_pitch,
     phrase_beats,
@@ -110,10 +111,11 @@ def smooth_voiced(logf: np.ndarray, voiced: np.ndarray, n: int) -> np.ndarray:
     return out
 
 
-def lock_pitch(f0: np.ndarray, spec: dict, lock: float, glide_ms: float, smooth: int) -> np.ndarray:
+def lock_pitch(f0: np.ndarray, spec: dict, lock: float, glide_ms: float, smooth: int,
+               lead_beats: float = 4.0) -> np.ndarray:
     voiced = f0 > 0
     logf = np.where(voiced, np.log(np.where(voiced, f0, 1.0)), 0.0)
-    target, since = note_track(spec, len(f0))
+    target, since = note_track(spec, len(f0), lead_beats)
     ramp = np.clip(since / max(glide_ms / 1000, 1e-6), 0, 1)  # 音符の頭の滑らかな入りは残す
     w = np.where(voiced & ~np.isnan(target), lock * ramp, 0.0)
     logf = np.where(w > 0, (1 - w) * logf + w * np.nan_to_num(target), logf)
@@ -121,8 +123,8 @@ def lock_pitch(f0: np.ndarray, spec: dict, lock: float, glide_ms: float, smooth:
     return np.where(voiced, np.exp(logf), 0.0)
 
 
-def cents_error(f0: np.ndarray, spec: dict) -> float:
-    target, since = note_track(spec, len(f0))
+def cents_error(f0: np.ndarray, spec: dict, lead_beats: float = 4.0) -> float:
+    target, since = note_track(spec, len(f0), lead_beats)
     m = (f0 > 0) & ~np.isnan(target) & (since > 0.06)
     return float(np.sqrt(np.mean((1200 * (np.log(f0[m]) - target[m]) / np.log(2)) ** 2))) if m.any() else 0.0
 
@@ -207,14 +209,15 @@ def main() -> int:
     for k in ("full.lab", "mono.lab", "timing.lab", "f0", "melspec"):
         shutil.copy(src[k], o[k])
     f0_before = np.fromfile(src["f0"], dtype="<f4").astype(np.float64)
-    err_before = cents_error(f0_before, spec)
+    lead = detect_lead_beats(src["timing.lab"], spec)  # 譜面の最初が休符だと、頭の 1 小節は付かない
+    err_before = cents_error(f0_before, spec, lead)
 
     if p["consonant_scale"] != 1:  # 1. timing を編集 → f0・melspec を推定し直す
         write_lab(o["timing.lab"], tighten_consonants(read_lab(src["timing.lab"]), p["consonant_scale"]))
         run(tmp_wav, "--skip-timing", "--skip-wav")
     if p["pitch_lock"] > 0 or p["smooth"] > 1:  # 2. f0 を編集 → melspec を推定し直す
         f0 = np.fromfile(o["f0"], dtype="<f4").astype(np.float64)
-        lock_pitch(f0, spec, p["pitch_lock"], p["glide_ms"], p["smooth"]).astype("<f4").tofile(o["f0"])
+        lock_pitch(f0, spec, p["pitch_lock"], p["glide_ms"], p["smooth"], lead).astype("<f4").tofile(o["f0"])
         run(tmp_wav, "--skip-timing", "--skip-f0", "--skip-wav")
     if p["hf_boost"] or p["cons_boost"]:  # 3. melspec を編集
         mel = np.fromfile(o["melspec"], dtype="<f4").reshape(-1, 100)
@@ -222,9 +225,9 @@ def main() -> int:
     run(o["wav"], "--skip-timing", "--skip-f0", "--skip-melspec")  # 4. wav を1回だけ合成
 
     f0_after = np.fromfile(o["f0"], dtype="<f4").astype(np.float64)
-    print(f"譜面の音高からのずれ(RMS): {err_before:.0f} セント → {cents_error(f0_after, spec):.0f} セント")
+    print(f"譜面の音高からのずれ(RMS): {err_before:.0f} セント → {cents_error(f0_after, spec, lead):.0f} セント")
     print(f"4kHz 以上のエネルギー比: {hf_share(src['wav']) * 100:.1f}% → {hf_share(o['wav']) * 100:.1f}%")
-    clip = clip_wav(o["wav"], spec["bpm"], phrase_beats(spec))
+    clip = clip_wav(o["wav"], spec["bpm"], phrase_beats(spec), lead)
     print(f"出力: {o['wav']}\n切り出し(Sonic Pi 用): {clip}({phrase_beats(spec):g} 拍)")
     return 0
 
