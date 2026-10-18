@@ -1,0 +1,11 @@
+{
+  "name": "ライド",
+  "kind": "drum",
+  "voice": {
+    "name": "ride_tri",
+    "amp": 0.35,
+    "pan": 0.0
+  },
+  "description": "ライドシンバル",
+  "source": "ai"
+}

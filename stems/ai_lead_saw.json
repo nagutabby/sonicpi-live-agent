@@ -1,0 +1,13 @@
+{
+  "name": "ソーリード",
+  "kind": "melody",
+  "voice": {
+    "name": "saw",
+    "amp": 0.5,
+    "pan": 0.0,
+    "cutoff": 100,
+    "env": "stab"
+  },
+  "description": "明るい定番のリード",
+  "source": "ai"
+}

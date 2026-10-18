@@ -1,0 +1,13 @@
+{
+  "name": "プラック(コード)",
+  "kind": "chord",
+  "voice": {
+    "name": "pluck",
+    "amp": 0.7,
+    "pan": 0.0,
+    "cutoff": 100,
+    "env": "pluck"
+  },
+  "description": "はじく弦のコード。アルペジオ向き",
+  "source": "ai"
+}

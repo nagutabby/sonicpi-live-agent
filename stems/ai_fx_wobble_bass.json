@@ -1,0 +1,15 @@
+{
+  "name": "ワブル",
+  "kind": "fx",
+  "voice": {
+    "name": "wobble",
+    "mix": 0.9,
+    "params": {
+      "phase": 1,
+      "cutoff_min": 55,
+      "cutoff_max": 115
+    }
+  },
+  "description": "1拍周期でフィルターを往復させるベース向きのうねり",
+  "source": "ai"
+}

@@ -1,0 +1,14 @@
+{
+  "name": "付点8分エコー",
+  "kind": "fx",
+  "voice": {
+    "name": "echo",
+    "mix": 0.35,
+    "params": {
+      "phase": 0.375,
+      "decay": 3
+    }
+  },
+  "description": "付点8分(0.375拍)で繰り返すやまびこ。メロディ向き",
+  "source": "ai"
+}

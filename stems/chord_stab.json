@@ -1,0 +1,12 @@
+{
+ "name": "コード(スタブ)",
+ "kind": "chord",
+ "voice": {
+  "name": "supersaw",
+  "amp": 0.45,
+  "pan": 0,
+  "cutoff": 95,
+  "env": "stab"
+ },
+ "description": "急に立ち上がる短いコード"
+}

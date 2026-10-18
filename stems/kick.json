@@ -1,0 +1,10 @@
+{
+ "name": "キック",
+ "kind": "drum",
+ "voice": {
+  "name": "bd_haus",
+  "amp": 1.0,
+  "pan": 0
+ },
+ "description": "低音の太いキック(bd_haus)"
+}

@@ -1,0 +1,14 @@
+{
+  "name": "ホールリバーブ",
+  "kind": "fx",
+  "voice": {
+    "name": "reverb",
+    "mix": 0.45,
+    "params": {
+      "room": 0.85,
+      "damp": 0.5
+    }
+  },
+  "description": "広い空間の残響。コードやメロディに奥行きを足す",
+  "source": "ai"
+}

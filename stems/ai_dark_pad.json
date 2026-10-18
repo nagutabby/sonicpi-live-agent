@@ -1,0 +1,13 @@
+{
+  "name": "ダークパッド",
+  "kind": "chord",
+  "voice": {
+    "name": "hollow",
+    "amp": 0.5,
+    "pan": 0,
+    "cutoff": 85,
+    "env": "pad"
+  },
+  "description": "中空の音色をゆっくり立ち上げる暗いパッド。コードを 1 小節ずつ伸ばす",
+  "source": "ai"
+}

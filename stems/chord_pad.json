@@ -1,0 +1,12 @@
+{
+ "name": "コード(パッド)",
+ "kind": "chord",
+ "voice": {
+  "name": "supersaw",
+  "amp": 0.4,
+  "pan": 0,
+  "cutoff": 95,
+  "env": "pad"
+ },
+ "description": "ゆっくり立ち上がって長く残る"
+}

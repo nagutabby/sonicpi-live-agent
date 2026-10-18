@@ -1,0 +1,11 @@
+{
+  "name": "ハット(オープン)",
+  "kind": "drum",
+  "voice": {
+    "name": "drum_cymbal_open",
+    "amp": 0.3,
+    "pan": 0.0
+  },
+  "description": "長く伸びるオープンハット。裏拍に",
+  "source": "ai"
+}

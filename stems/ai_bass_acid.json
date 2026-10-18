@@ -1,0 +1,13 @@
+{
+  "name": "アシッドベース",
+  "kind": "bass",
+  "voice": {
+    "name": "tb303",
+    "amp": 0.5,
+    "pan": 0.0,
+    "cutoff": 80,
+    "env": "pluck"
+  },
+  "description": "TB-303 風のうねるベース",
+  "source": "ai"
+}

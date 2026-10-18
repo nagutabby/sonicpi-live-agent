@@ -1,0 +1,12 @@
+{
+ "name": "ベース(サイン)",
+ "kind": "bass",
+ "voice": {
+  "name": "sine",
+  "amp": 0.8,
+  "pan": 0,
+  "cutoff": 100,
+  "env": "pluck"
+ },
+ "description": "サイン波のサブベース。コード進行の根音を鳴らす"
+}

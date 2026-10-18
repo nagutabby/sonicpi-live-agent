@@ -1,0 +1,14 @@
+{
+  "name": "8分ゲート",
+  "kind": "fx",
+  "voice": {
+    "name": "slicer",
+    "mix": 1,
+    "params": {
+      "phase": 0.5,
+      "pulse_width": 0.5
+    }
+  },
+  "description": "8分音符で音を刻む。ブレイクの高揚に",
+  "source": "ai"
+}

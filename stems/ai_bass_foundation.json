@@ -1,0 +1,13 @@
+{
+  "name": "ベース(太い)",
+  "kind": "bass",
+  "voice": {
+    "name": "bass_foundation",
+    "amp": 0.8,
+    "pan": 0.0,
+    "cutoff": 90,
+    "env": "pluck"
+  },
+  "description": "太く深い低音。サブの上に重ねる",
+  "source": "ai"
+}

@@ -1,0 +1,13 @@
+{
+  "name": "チップリード",
+  "kind": "melody",
+  "voice": {
+    "name": "chiplead",
+    "amp": 0.5,
+    "pan": 0.0,
+    "cutoff": 110,
+    "env": "stab"
+  },
+  "description": "8bit 風のリード",
+  "source": "ai"
+}

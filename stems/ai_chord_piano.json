@@ -1,0 +1,13 @@
+{
+  "name": "ピアノ(コード)",
+  "kind": "chord",
+  "voice": {
+    "name": "piano",
+    "amp": 0.06,
+    "pan": 0.0,
+    "cutoff": 100,
+    "env": "stab"
+  },
+  "description": "ピアノ。音が大きいので amp は小さめ(0.04〜0.1)",
+  "source": "ai"
+}

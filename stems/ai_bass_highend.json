@@ -1,0 +1,13 @@
+{
+  "name": "ベース(倍音)",
+  "kind": "bass",
+  "voice": {
+    "name": "bass_highend",
+    "amp": 0.6,
+    "pan": 0.0,
+    "cutoff": 100,
+    "env": "pluck"
+  },
+  "description": "倍音が強く、小さいスピーカーでも聞こえるベース",
+  "source": "ai"
+}

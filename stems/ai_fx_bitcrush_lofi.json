@@ -1,0 +1,14 @@
+{
+  "name": "ローファイ",
+  "kind": "fx",
+  "voice": {
+    "name": "bitcrusher",
+    "mix": 0.5,
+    "params": {
+      "bits": 8,
+      "sample_rate": 9000
+    }
+  },
+  "description": "解像度を落としたざらざらのデジタル感",
+  "source": "ai"
+}

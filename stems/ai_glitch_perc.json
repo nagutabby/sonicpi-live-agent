@@ -1,0 +1,11 @@
+{
+  "name": "グリッチ・パーカッション",
+  "kind": "drum",
+  "voice": {
+    "name": "glitch_perc1",
+    "amp": 0.5,
+    "pan": 0.0
+  },
+  "description": "グリッチ系の短い打音",
+  "source": "ai"
+}

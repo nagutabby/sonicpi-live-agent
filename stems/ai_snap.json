@@ -1,0 +1,11 @@
+{
+  "name": "フィンガースナップ",
+  "kind": "drum",
+  "voice": {
+    "name": "perc_snap",
+    "amp": 1.0,
+    "pan": 0.0
+  },
+  "description": "指パッチン。クラップの代わりに",
+  "source": "ai"
+}

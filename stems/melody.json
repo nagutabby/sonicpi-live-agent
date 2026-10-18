@@ -1,0 +1,12 @@
+{
+ "name": "メロディ(prophet)",
+ "kind": "melody",
+ "voice": {
+  "name": "prophet",
+  "amp": 0.5,
+  "pan": 0,
+  "cutoff": 100,
+  "env": "stab"
+ },
+ "description": "ピアノロールで音を置く"
+}

@@ -1,0 +1,11 @@
+{
+  "name": "スネア(エレクトロ)",
+  "kind": "drum",
+  "voice": {
+    "name": "elec_snare",
+    "amp": 0.7,
+    "pan": 0.0
+  },
+  "description": "電子的なスネア",
+  "source": "ai"
+}

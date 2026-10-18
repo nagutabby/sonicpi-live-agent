@@ -1,0 +1,13 @@
+{
+  "name": "ざらつき歪み",
+  "kind": "fx",
+  "voice": {
+    "name": "distortion",
+    "mix": 0.4,
+    "params": {
+      "distort": 0.55
+    }
+  },
+  "description": "軽く歪ませて太く荒くする",
+  "source": "ai"
+}

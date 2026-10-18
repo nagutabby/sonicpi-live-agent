@@ -1,0 +1,11 @@
+{
+  "name": "スネア(ダブ)",
+  "kind": "drum",
+  "voice": {
+    "name": "sn_dub",
+    "amp": 0.8,
+    "pan": 0.0
+  },
+  "description": "空間系で使うダブ風のスネア",
+  "source": "ai"
+}

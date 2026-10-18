@@ -1,0 +1,11 @@
+{
+  "name": "スネア(タイト)",
+  "kind": "drum",
+  "voice": {
+    "name": "drum_snare_hard",
+    "amp": 0.7,
+    "pan": 0.0
+  },
+  "description": "短く締まったスネア",
+  "source": "ai"
+}

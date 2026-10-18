@@ -1,0 +1,13 @@
+{
+  "name": "FM リード",
+  "kind": "melody",
+  "voice": {
+    "name": "fm",
+    "amp": 0.5,
+    "pan": 0.0,
+    "cutoff": 100,
+    "env": "stab"
+  },
+  "description": "金属的な FM の音",
+  "source": "ai"
+}

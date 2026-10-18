@@ -1,0 +1,13 @@
+{
+  "name": "808 サブベース",
+  "kind": "bass",
+  "voice": {
+    "name": "sc808_bassdrum",
+    "amp": 0.9,
+    "pan": 0,
+    "cutoff": 70,
+    "env": "pluck"
+  },
+  "description": "808 のバスドラ波形を低い音で鳴らす、丸くて長いサブ。C1〜C2 付近に置く",
+  "source": "ai"
+}

@@ -1,0 +1,13 @@
+{
+  "name": "ダークローパス",
+  "kind": "fx",
+  "voice": {
+    "name": "lpf",
+    "mix": 1,
+    "params": {
+      "cutoff": 70
+    }
+  },
+  "description": "高域を削ってこもらせる。イントロやブレイクに",
+  "source": "ai"
+}

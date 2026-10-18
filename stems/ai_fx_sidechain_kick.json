@@ -1,0 +1,14 @@
+{
+  "name": "サイドチェイン(キック)",
+  "kind": "fx",
+  "voice": {
+    "name": "sidechain",
+    "mix": 1,
+    "params": {
+      "depth": 0.8,
+      "release": 0.4
+    }
+  },
+  "description": "グリッドの X の位置で音量を下げて戻す。キックと同じ位置に置く",
+  "source": "ai"
+}

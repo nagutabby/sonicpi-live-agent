@@ -1,0 +1,10 @@
+{
+ "name": "ハット(スナップ)",
+ "kind": "drum",
+ "voice": {
+  "name": "hat_snap",
+  "amp": 0.3,
+  "pan": 0.0
+ },
+ "description": "スナップ系の軽いハット"
+}

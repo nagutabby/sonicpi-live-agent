@@ -1,0 +1,13 @@
+{
+  "name": "ウィンウッドリード",
+  "kind": "melody",
+  "voice": {
+    "name": "winwood_lead",
+    "amp": 0.4,
+    "pan": 0.0,
+    "cutoff": 105,
+    "env": "stab"
+  },
+  "description": "オルガン系のリード",
+  "source": "ai"
+}

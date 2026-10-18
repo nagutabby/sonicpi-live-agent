@@ -1,0 +1,11 @@
+{
+  "name": "キック(808)",
+  "kind": "drum",
+  "voice": {
+    "name": "bd_808",
+    "amp": 1.0,
+    "pan": 0.0
+  },
+  "description": "808 風のサンプルキック",
+  "source": "ai"
+}

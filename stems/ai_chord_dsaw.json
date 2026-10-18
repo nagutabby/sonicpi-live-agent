@@ -1,0 +1,13 @@
+{
+  "name": "ダブルソー(コード)",
+  "kind": "chord",
+  "voice": {
+    "name": "dsaw",
+    "amp": 0.45,
+    "pan": 0.0,
+    "cutoff": 95,
+    "env": "stab"
+  },
+  "description": "厚いノコギリ波のコード",
+  "source": "ai"
+}
