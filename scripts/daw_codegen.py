@@ -84,7 +84,7 @@ SYNTH_INFO = {
     "hollow": ["パッド", "中空でかすれた、静かなパッド"],
     "dark_ambience": ["パッド", "暗く広がるアンビエント。リバーブ感がある"],
     "organ_tonewheel": ["パッド", "トーンホイールオルガン。温かく持続する"],
-    "piano": ["鍵盤・ベル", "ピアノ。音量は低め(amp 0.04 前後から)に注意"],
+    "piano": ["鍵盤・ベル", "ピアノ。音量は低め(amp 0.2 前後から)に注意。DAW では amp に 0.2 を掛けて鳴らす"],
     "rhodey": ["鍵盤・ベル", "エレクトリックピアノ(Rhodes 風)。まるくて甘い"],
     "kalimba": ["鍵盤・ベル", "カリンバ(親指ピアノ)。素朴でかわいい"],
     "pretty_bell": ["鍵盤・ベル", "きらっとしたベル"],
@@ -246,7 +246,7 @@ def validate(project: dict) -> dict:
         pool = cat["samples"] if kind == "drum" else cat["synths"]
         if name not in pool:
             raise ValueError(f"{tid}: 音色が見つかりません: {name}")
-        voice = {"name": name, "amp": round(num(v.get("amp"), 0, 2, 0.8), 3), "pan": round(num(v.get("pan"), -1, 1, 0), 2)}
+        voice = {"name": name, "amp": round(num(v.get("amp", v.get("velocity")), 0, 2, 0.8), 3), "pan": round(num(v.get("pan"), -1, 1, 0), 2)}
         if kind != "drum":
             voice["cutoff"] = int(num(v.get("cutoff"), 20, 130, 100))
             voice["env"] = v.get("env") if v.get("env") in ENVS else "stab"
@@ -286,6 +286,33 @@ def validate(project: dict) -> dict:
             "key": {"root": key_root, "scale": key_scale}, "prog": prog, "markers": markers, "tracks": tracks}
 
 
+def slice_project(project: dict, start_cell: int = 0, end_cell: int | None = None) -> dict:
+    """曲の一部([start_cell, end_cell) マス = 16 分音符)だけを取り出した、先頭から始まるプロジェクト。途中から鳴らす用。"""
+    p = validate(project)
+    res, meter = p["res"], p["meter"]
+    cb = res * meter
+    total = p["bars"] * cb
+    a = max(0, min(int(start_cell), total - 1))
+    b = total if end_cell is None else max(a + 1, min(int(end_cell), total))
+    bars = max(1, -(-(b - a) // cb))
+    t0, t1 = a / res, b / res   # 拍
+    tracks = []
+    for t in p["tracks"]:
+        x = {**t}
+        if "steps" in x:
+            x["steps"] = x["steps"][a:b]   # 足りない分は validate が休みで埋める
+        if "notes" in x:
+            notes = []
+            for n in x["notes"]:   # 範囲の前から鳴っている音は、範囲の頭から残りの長さで鳴らし直す
+                s, e = max(n[0], t0), min(n[0] + n[2], t1)
+                if e > s:
+                    notes.append([s - t0, n[1], e - s])
+            x["notes"] = notes
+        tracks.append(x)
+    first = a // cb
+    return {**p, "bars": bars, "prog": p["prog"][first : first + bars] or [None], "markers": [], "tracks": tracks}
+
+
 def fmt_pattern(steps: str, res: int, meter: int) -> str:
     bar = res * meter
     return " | ".join(" ".join(steps[k : k + res] for k in range(b, min(b + bar, len(steps)), res))
@@ -295,7 +322,17 @@ def fmt_pattern(steps: str, res: int, meter: int) -> str:
 ENV_BEATS = {"pluck": (0, 0.03), "stab": (0.01, 0.15), "pad": (0.4, 1.0), "swell": (0.4, 0.03)}  # attack, release(拍)
 
 
+PIANO_AMP = 0.2   # :piano は他のシンセよりかなり大きく鳴るので、amp に掛けて揃える(目安。録音で確かめる)
+
+
 def opts_str(voice: dict, kind: str) -> str:
+    if kind != "drum" and voice["name"] == "piano":
+        # :piano は自然な減衰が音色なので、attack / release / sustain / cutoff は渡さない。
+        # amp は音量と、打鍵の強さ(vel。強いほど明るく硬い音)の両方に効かせる
+        parts = [f"amp: {voice['amp'] * PIANO_AMP:g}", f"vel: {min(voice['amp'], 1):g}"]
+        if voice.get("pan"):
+            parts.append(f"pan: {voice['pan']:g}")
+        return ", ".join(parts)
     parts = [f"amp: {voice['amp']:g}"]
     if voice.get("pan"):
         parts.append(f"pan: {voice['pan']:g}")
@@ -341,7 +378,7 @@ def generate(project: dict) -> str:
             out.append(f"notes_{i} = [{notes}]   # [拍の位置, 音名, 長さ(拍)]")
             loops[i] = [f"live_loop :{i} do", f"  use_synth :{v['name']}", "  t = 0",
                         f"  notes_{i}.each do |b, n, l|", "    sleep b - t",
-                        f"    play n, {opts_str(v, 'note')}, sustain: l", "    t = b", "  end",
+                        f"    play n, {opts_str(v, 'note')}" + ("" if v["name"] == "piano" else ", sustain: l"), "    t = b", "  end",
                         f"  sleep {total} - t", "end"]
     for f in fxs:
         if f["voice"]["name"] == "sidechain":

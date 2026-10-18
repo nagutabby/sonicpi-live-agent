@@ -65,9 +65,6 @@ input[type=range]{padding:0;accent-color:var(--acc)}
 .bn.lr{background:#5ec4ff2e;box-shadow:inset 0 -3px 0 #5ec4ff}
 .bn .mk{color:var(--acc);font-weight:700;margin-left:4px}
 .bn.mkb{box-shadow:inset 3px 0 0 var(--acc)}
-#mm{width:70px;height:8px;background:#0c0d10;border-radius:4px;overflow:hidden;display:inline-block}
-#mm i,.mtr i{display:block;height:100%;width:0;background:linear-gradient(90deg,#5ec47a,#ffd166 75%,#ff6b6b)}
-.mtr{height:3px;background:#0c0d10;border-radius:2px;overflow:hidden;flex:none}
 .grip{cursor:grab;color:var(--dim);font-size:11px;letter-spacing:-2px;user-select:none}
 .hd.dragover{box-shadow:inset 0 3px 0 var(--acc)}
 .hd.fxt{box-shadow:inset -3px 0 0 #b48cff}.hd.sel.fxt{box-shadow:inset 3px 0 0 var(--acc),inset -3px 0 0 #b48cff}
@@ -94,9 +91,6 @@ input[type=range]{padding:0;accent-color:var(--acc)}
 .nt:after{content:"";position:absolute;right:0;top:0;bottom:0;width:6px;cursor:ew-resize}
 #rph{position:absolute;top:0;bottom:0;width:2px;background:var(--acc);z-index:4;pointer-events:none;display:none}
 pre{margin:0;padding:10px;overflow:auto;font-size:11px;color:#c9d1e0;flex:1;white-space:pre}
-#res{padding:10px;display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}
-#wave{width:100%;height:80px;background:var(--panel2);border-radius:5px;cursor:pointer}
-#stats{font-size:12px;color:var(--dim);white-space:pre-wrap}
 .pop{position:fixed;z-index:50;background:var(--panel3);border:1px solid var(--acc);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px;box-shadow:0 8px 30px #000a;max-width:380px}
 .pop .g{display:flex;gap:4px;flex-wrap:wrap}
 .pop button{min-width:54px;padding:4px 6px}
@@ -124,24 +118,22 @@ pre{margin:0;padding:10px;overflow:auto;font-size:11px;color:#c9d1e0;flex:1;whit
 <body>
 <div id="top">
   <h1>Sonic Pi DAW</h1>
-  <button id="play" title="再生/停止(スペース)">▶</button>
+  <button id="play" title="再生/停止(スペース)。再生位置から Sonic Pi の本物の音で鳴ります(スピーカーから音が出ます)">▶</button>
   <div id="time">1.1.1</div>
+  <span id="msg"></span>
   <label>BPM <input id="bpm" type="number" min="40" max="240" style="width:64px"></label>
   <label>キー <select id="kroot"></select><select id="kscale"><option value="major">メジャー</option><option value="minor">マイナー</option></select></label>
   <label><input id="loop" type="checkbox" checked> ループ</label>
   <button id="lrange" hidden title="ループ範囲を解除(⇧+クリックで小節を 2 つ選ぶと範囲になります)"></button>
   <label>スナップ <select id="snap"><option value="4">1拍</option><option value="2">1/2拍</option><option value="1" selected>1/4拍</option></select></label>
   <label>幅 <button id="zout" title="縮小(Ctrl+ホイールでも)">－</button><button id="zin" title="拡大(Ctrl+ホイールでも)">＋</button></label>
-  <span id="mm" title="マスターの音量(再生中)"><i></i></span>
   <span class="sep"></span>
   <label>曲 <select id="proj"></select></label>
   <button id="new">新規</button>
   <label>プリセット <select id="preset"></select></label>
   <button id="psave" title="いまの曲を、トラックの音色・パターン・コード進行ごと保存">💾 プリセット保存</button>
   <span class="sep"></span>
-  <button id="rec" title="Sonic Pi で本物の音を録音する(録音中はスピーカーから鳴る)">● Sonic Pi で録音</button>
   <button id="help" title="ショートカット一覧">？</button>
-  <span id="msg"></span>
 </div>
 <div id="arr"><div id="tl"></div><div id="ph"></div></div>
 <div id="split" title="ドラッグで、下のパネルの高さを変える(ダブルクリックで元の高さ)"></div>
@@ -360,7 +352,7 @@ function render() {
     const amp = fx ? h('input', { type: 'range', min: 0, max: 1, step: .05, value: t.voice.mix ?? 1, title: 'mix(エフェクトのかかり具合)' + (t.voice.mix ?? 1), disabled: t.voice.name === 'sidechain', onclick: ev => ev.stopPropagation(), oninput: ev => { t.voice.mix = +ev.target.value; ev.target.title = 'mix ' + t.voice.mix; dirty(); } })
       : h('input', { type: 'range', min: 0, max: 1.5, step: .05, value: t.voice.amp, title: 'amp ' + t.voice.amp, onclick: ev => ev.stopPropagation(), oninput: ev => { t.voice.amp = +ev.target.value; ev.target.title = 'amp ' + t.voice.amp; dirty(); } });
     hd.append(h('div', { class: 'r1' }, h('span', { class: 'grip', draggable: true, title: 'ドラッグで並べ替え', ondragstart: ev => { dragTid = t.id; ev.dataTransfer.setData('text/plain', t.id); }, ondragend: () => { dragTid = null; } }, '⋮⋮'), h('span', { class: 'kd', style: `background:${kc}` }, kn), nm, del),
-      h('div', { class: 'r2' }, m, s, amp), h('div', { class: 'mtr', title: 'レベル(ブラウザの試聴)' }, h('i', { 'data-id': t.id })));
+      h('div', { class: 'r2' }, m, s, amp));
     hd.title = (fx ? `${t.voice.name} → ` + (t.targets.length ? t.targets.map(i => (P.tracks.find(x => x.id === i) || {}).name).filter(Boolean).join('、') : '全トラック') : t.voice.name);
     const lane = h('div', { class: 'lane' + (gray ? ' gray' : '') + (off ? ' dis' : '') });
     if (t.steps != null) {
@@ -462,11 +454,10 @@ function chordPop(i, ev) {
 const sel = () => P.tracks.find(t => t.id === selId);
 function renderBottom() {
   const tabs = $('#tabs'); tabs.textContent = '';
-  for (const [k, l] of [['edit', 'エディタ'], ['stems', 'ライブラリ(stem・プリセット)'], ['code', 'Sonic Pi コード'], ['res', '録音結果']]) tabs.append(h('button', { class: tab === k ? 'on' : '', onclick: () => { tab = k; renderBottom(); } }, l));
+  for (const [k, l] of [['edit', 'エディタ'], ['stems', 'ライブラリ(stem・プリセット)'], ['code', 'Sonic Pi コード']]) tabs.append(h('button', { class: tab === k ? 'on' : '', onclick: () => { tab = k; renderBottom(); } }, l));
   const pane = $('#pane'); pane.textContent = '';
   if (tab === 'stems') return stemPane(pane);
   if (tab === 'code') return codePane(pane);
-  if (tab === 'res') return resPane(pane);
   editorPane(pane);
 }
 function editorPane(pane) {
@@ -501,7 +492,7 @@ function soundPicker(kind, value, onPick, preview) {
     search.oninput = () => { q = search.value.trim().toLowerCase(); draw(); };
     const r = btn.getBoundingClientRect();
     const pop = h('div', { class: 'spop', style: `left:${clamp(r.left, 8, innerWidth - 396)}px;top:${r.bottom + 4 + 440 > innerHeight ? Math.max(8, r.top - 444) : r.bottom + 4}px` }, search, chips, list,
-      h('small', { class: 'hint' }, kind === 'drum' ? 'クリックで選択して鳴らします(Sonic Pi の本物のサンプル)' : 'クリックで選択して鳴らします(ブラウザの簡易音。本物の音は「Sonic Pi で録音」)'));
+      h('small', { class: 'hint' }, kind === 'drum' ? 'クリックで選択して鳴らします(Sonic Pi の本物のサンプル)' : 'クリックで選択して鳴らします(ブラウザの簡易音。本物の音は ▶ で鳴らします)'));
     document.body.append(pop); draw(); search.focus();
     const away = ev => { if (!ev.target.closest('.spop') && ev.target !== btn) { pop.remove(); document.removeEventListener('pointerdown', away); } };
     setTimeout(() => document.addEventListener('pointerdown', away), 0);
@@ -528,7 +519,7 @@ function settings(t) {
     fxFields(el, t.voice, dirty, v => { t.voice = v; if (v.name === 'sidechain') t.steps ??= '.'.repeat(totalCells()); else delete t.steps; dirty(); render(); renderBottom(); });
     const tg = h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center' }, h('span', { class: 'hint' }, '対象(何も選ばなければ全トラック):'));
     for (const x of P.tracks.filter(x => x.kind !== 'fx')) tg.append(h('label', { style: 'display:flex;gap:3px;align-items:center' }, h('input', { type: 'checkbox', checked: t.targets.includes(x.id), onchange: ev => { t.targets = ev.target.checked ? [...t.targets, x.id] : t.targets.filter(i => i !== x.id); dirty(); render(); } }), x.name));
-    el.append(tg, h('small', { class: 'hint' }, 'ブラウザの試聴ではエフェクトは鳴りません。効果は「Sonic Pi で録音」で確認します。'));
+    el.append(tg, h('small', { class: 'hint' }, 'エフェクトの効果は、▶ で曲を鳴らして確認します(音色の試聴では鳴りません)。'));
     return el;
   }
   const snd = soundPicker(t.kind, t.voice.name, n => { t.voice.name = n; dirty(); render(); }, n => Audio_.audition({ ...t, voice: { ...t.voice, name: n } }));
@@ -753,32 +744,14 @@ function codePane(pane) {
     h('label', {}, '曲名', h('input', { type: 'text', value: P.name, onchange: ev => { P.name = ev.target.value.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 40) || 'song'; ev.target.value = P.name; dirty(); loadList(); } })));
   pane.prepend(side);
 }
-function resPane(pane) {
-  const r = h('div', { id: 'res' });
-  r.append(h('canvas', { id: 'wave', width: 1400, height: 160, onclick: e => { const a = $('#audio'); if (a.duration) a.currentTime = e.offsetX / e.target.clientWidth * a.duration; } }), h('div', { id: 'stats' }, lastStats ? '' : 'まだ録音していません。上の「● Sonic Pi で録音」を押してください(録音中は音が鳴ります)。'));
-  pane.append(r);
-  if (lastStats) showStats(lastStats);
-}
-
 /* ---------- preview audio (簡易シンセ。Sonic Pi の音ではない) ---------- */
 let playing = false;
 const Audio_ = (() => {
-  let ac = null, master = null, mAn = null, dest = null, anchors = [], timer = null, nextCell = 0, nextTime = 0, lastCell = 0, lastCellTime = 0;
+  let ac = null, master = null, mAn = null, dest = null;
   const init = () => { if (ac) return; ac = new AudioContext(); const comp = ac.createDynamicsCompressor(); master = ac.createGain(); master.gain.value = .6; master.connect(comp); comp.connect(ac.destination); mAn = ac.createAnalyser(); mAn.fftSize = 512; master.connect(mAn); };
   const bus = {};
   const busOf = id => bus[id] ||= (() => { const g = ac.createGain(), an = ac.createAnalyser(); an.fftSize = 512; g.connect(an); an.connect(master); return { g, an, buf: new Float32Array(512), lv: 0 }; })();
   const peakOf = (an, buf) => { an.getFloatTimeDomainData(buf); let m = 0; for (const x of buf) m = Math.max(m, Math.abs(x)); return m; };
-  function meters() {   // 再生中のレベルを、トラックごとと全体で更新する(減衰つき)
-    if (!ac) return;
-    for (const el of document.querySelectorAll('.mtr i[data-id]')) { const b = bus[el.dataset.id]; if (b) { b.lv = Math.max(peakOf(b.an, b.buf), b.lv * .9); el.style.width = Math.min(100, b.lv * 160) + '%'; } else el.style.width = '0'; }
-    const m = document.querySelector('#mm i'); if (m) { mAn.lv = Math.max(peakOf(mAn, mBuf), (mAn.lv || 0) * .9); m.style.width = Math.min(100, mAn.lv * 130) + '%'; }
-  }
-  const mBuf = new Float32Array(512);
-  const region = () => { const cb = cellsBar(); return loopR ? [loopR.a * cb, (loopR.b + 1) * cb] : [0, totalCells()]; };
-  const midiHz = m => 440 * 2 ** ((m - 69) / 12);
-  const noiseBuf = () => { if (noiseBuf.b) return noiseBuf.b; const b = ac.createBuffer(1, ac.sampleRate, ac.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; return noiseBuf.b = b; };
-  const ENV = { pluck: [.004, .08], stab: [.01, .12], pad: [.25, .5], swell: [.3, .05] };
-  const stepSec = () => 60 / P.bpm / CELLS_PER_BEAT;
   function pan(node, p) { if (!ac.createStereoPanner) return node; const s = ac.createStereoPanner(); s.pan.value = p; node.connect(s); return s; }
   const sampleBuf = {}, sampleLoading = {};
   const loadSample = name => {   // Sonic Pi の本物のサンプルを読み込む(失敗したら簡易音にする)
@@ -816,62 +789,42 @@ const Audio_ = (() => {
     } finally { dest = null; }
   }
   const chordBlip = c => { init(); ac.resume(); const t = { kind: 'chord', voice: { name: 'saw', pan: 0, cutoff: 90, env: 'stab', amp: .5 } }; const base = NAMES.indexOf(c[0]) + 60, iv = cat.chords[c[1]]; iv.forEach(x => tone(t, base + x, ac.currentTime + .01, .5, .15 / Math.sqrt(iv.length))); };
-  function active() { const s = P.tracks.filter(t => t.solo); return s.length ? s : P.tracks.filter(t => !t.mute); }
-  function sched() {
-    while (nextTime < ac.currentTime + .12) {
-      const [rs, re] = region();
-      if (nextCell >= re) { if (!$('#loop').checked) { stop(); return; } nextCell = rs; anchors.push({ time: nextTime, cell: rs }); }
-      const cell = nextCell;
-      for (const t of active()) hit(t, cell, nextTime);
-      lastCell = cell; lastCellTime = nextTime; nextTime += stepSec(); nextCell++;
-    }
-  }
+  const midiHz = m => 440 * 2 ** ((m - 69) / 12);
+  const noiseBuf = () => { if (noiseBuf.b) return noiseBuf.b; const b = ac.createBuffer(1, ac.sampleRate, ac.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; return noiseBuf.b = b; };
+  const ENV = { pluck: [.004, .08], stab: [.01, .12], pad: [.25, .5], swell: [.3, .05] };
+  const region = () => { const cb = cellsBar(); return loopR ? [loopR.a * cb, (loopR.b + 1) * cb] : [0, totalCells()]; };
+  const stepSec = () => 60 / P.bpm / CELLS_PER_BEAT;
+  /* ▶ は Sonic Pi の本物の音(サーバーの常駐 Sonic Pi に、再生位置から先のコードを送る)。縦線は経過時間から出すので、数十 ms ずれることがある */
+  let t0 = 0, seg = null, token = 0;
+  const LEAD = .5;   // Sonic Pi が音を先行して予約する時間(秒)。縦線をこの分だけ遅らせる
   async function start() {
-    init(); ac.resume(); await Promise.all(P.tracks.filter(t => t.kind === 'drum').map(t => loadSample(t.voice.name)));
-    const [rs, re] = region(); nextCell = cursor >= rs && cursor < re ? cursor : rs;   // 再生位置から始める(ループ範囲の外なら範囲の先頭)
-    nextTime = ac.currentTime + .08; lastCell = nextCell; lastCellTime = nextTime; anchors = [{ time: nextTime, cell: nextCell }]; playing = true; $('#play').textContent = '■'; $('#play').classList.add('on');
-    timer = setInterval(sched, 25); sched(); requestAnimationFrame(frame);
+    const my = ++token, [rs, re] = region(), from = cursor >= rs && cursor < re ? cursor : rs;
+    say('Sonic Pi を準備中…(最初の1回は数秒〜十数秒かかります)'); $('#play').disabled = true; $('#play').textContent = '…';
+    try {
+      const r = await api('/api/play', { project: P, start_cell: from, end_cell: re, loop: $('#loop').checked });
+      if (my !== token) { api('/api/stop', {}).catch(() => {}); return; }
+      if (r.check) say(r.check, 1); else say('Sonic Pi で再生中');
+      seg = { from, len: re - from }; t0 = performance.now() + LEAD * 1000; playing = true; $('#play').textContent = '■'; $('#play').classList.add('on'); requestAnimationFrame(frame);
+    } catch (e) { say(e.message, 1); $('#play').textContent = '▶'; } finally { $('#play').disabled = false; }
   }
-  function seek(cell) { if (!playing) return; const [rs, re] = region(); nextCell = clamp(cell, 0, totalCells() - 1); if (nextCell >= re) nextCell = rs; nextTime = ac.currentTime + .05; lastCell = nextCell; lastCellTime = nextTime; anchors = [{ time: nextTime, cell: nextCell }]; }
+  function seek(cell) { if (!playing) return; stop(); cursor = cell; start(); }
   function stop() {
-    clearInterval(timer); playing = false; $('#play').textContent = '▶'; $('#play').classList.remove('on'); setPlayhead(cursor);
-    document.querySelectorAll('.mtr i, #mm i').forEach(i => { i.style.width = '0'; });
+    token++; if (playing) api('/api/stop', {}).catch(() => {});
+    playing = false; $('#play').textContent = '▶'; $('#play').classList.remove('on'); say(''); setPlayhead(cursor);
   }
   function frame() {
     if (!playing) return;
-    // 縦線は、鳴らす時刻(オーディオの時計)から連続的に位置を出す: 曲がる・戻る瞬間以外は、止まらず滑らかに進む
-    const now = ac.currentTime; while (anchors.length > 1 && anchors[1].time <= now) anchors.shift();
-    const a = anchors[0], pos = a.cell + Math.max(0, now - a.time) / stepSec();
-    setPlayhead(pos); meters(); requestAnimationFrame(frame);
+    const cells = Math.max(0, (performance.now() - t0) / 1000) / stepSec();
+    if (cells >= seg.len && !$('#loop').checked) { stop(); return; }
+    setPlayhead(seg.from + cells % seg.len); requestAnimationFrame(frame);
   }
   return { start, stop, seek, hit, chordBlip, blip: (m, t) => { init(); ac.resume(); tone(t, m, ac.currentTime, .25, (t.voice.amp) * .25); },
-    audition: async t => { if (t.kind === 'fx') { say('エフェクトはブラウザでは鳴りません。「Sonic Pi で録音」で確かめます'); return; } init(); ac.resume(); if (t.kind === 'drum') await loadSample(t.voice.name); const w = ac.currentTime + .02; if (t.kind === 'drum') drum(t.voice.name, w, t.voice.amp, t.voice.pan, 2); else tone(t, t.kind === 'bass' ? 36 : 64, w, .6, t.voice.amp * .3); } };
+    audition: async t => { if (t.kind === 'fx') { say('エフェクトは単独では鳴りません。▶ で曲を鳴らして確かめます'); return; } init(); ac.resume(); if (t.kind === 'drum') await loadSample(t.voice.name); const w = ac.currentTime + .02; if (t.kind === 'drum') drum(t.voice.name, w, t.voice.amp, t.voice.pan, 2); else tone(t, t.kind === 'bass' ? 36 : 64, w, .6, t.voice.amp * .3); } };
 })();
 function setPlayhead(cell) {
   const ph = $('#ph'); ph.style.display = 'block'; ph.style.height = $('#tl').offsetHeight + 'px'; ph.style.left = (250 + cell * cw()) + 'px';
   const r = $('#rph'); if (r) { r.style.display = 'block'; r.style.left = (48 + cell * RCW) + 'px'; }
   const beat = cell / CELLS_PER_BEAT; $('#time').textContent = `${Math.floor(beat / P.meter) + 1}.${Math.floor(beat % P.meter) + 1}.${Math.floor((cell % CELLS_PER_BEAT)) + 1}`;
-}
-
-/* ---------- Sonic Pi 録音 ---------- */
-let lastStats = null, poll = null;
-$('#rec').onclick = async () => {
-  const loops = 2, seconds = Math.round(P.bars * P.meter * 60 / P.bpm * loops * 10) / 10 + 0.5;
-  if (!confirm(`Sonic Pi で ${seconds} 秒(${loops} ループ)録音します。録音中はスピーカーから音が鳴ります。よろしいですか?`)) return;
-  try { await save(); await api('/api/render', { project: P, seconds }); $('#rec').disabled = true; say(`${seconds} 秒を録音中…(音が鳴ります)`); poll = setInterval(checkJob, 1500); }
-  catch (e) { say(e.message, 1); }
-};
-async function checkJob() {
-  const j = await api('/api/job'); if (j.state === 'running') return;
-  clearInterval(poll); $('#rec').disabled = false; tab = 'res';
-  if (j.state === 'error') { say('録音に失敗', 1); renderBottom(); $('#stats').textContent = j.message; return; }
-  lastStats = j; say('録音できました'); renderBottom(); const a = $('#audio'); a.src = '/renders/' + j.wav; a.play();
-}
-function showStats(j) {
-  const s = j.stats;
-  $('#stats').textContent = `${j.wav}  ${s.seconds} 秒   ピーク ${s.peak_db} dBFS${s.clip ? '(クリップ)' : ''}   RMS ${s.rms_db} dBFS` + (s.corr !== null ? `   左右の相関 ${s.corr}` : '') + '\n帯域: ' + Object.entries(s.bands).map(([k, v]) => `${k} ${v}%`).join(' / ');
-  const c = $('#wave'), g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height); g.fillStyle = '#5ec4ff';
-  const n = s.wave.length, mid = c.height / 2; s.wave.forEach((v, i) => { const hh = v * mid; g.fillRect(i * c.width / n, mid - hh, Math.max(1, c.width / n - .5), hh * 2); });
 }
 
 /* ---------- toolbar ---------- */
@@ -913,6 +866,7 @@ document.addEventListener('keydown', e => {
   if (rollKeys(e)) return;
   if ((e.metaKey || e.ctrlKey) && (e.key === 'c' || e.key === 'v')) { if (e.key === 'c' ? copyBars() : (pasteBars(), true)) e.preventDefault(); return; }
 });
+window.addEventListener('unhandledrejection', ev => say(String(ev.reason?.message || ev.reason), 1));
 document.addEventListener('keydown', e => { if (e.code === 'Space' && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); $('#play').click(); } });
 $('#bpm').onchange = e => { P.bpm = clamp(+e.target.value || 110, 40, 240); e.target.value = P.bpm; dirty(); };
 $('#kroot').onchange = e => { P.key.root = e.target.value; dirty(); render(); renderBottom(); };
@@ -928,7 +882,7 @@ async function loadProject(name) {
   resetHistory(); Audio_.stop(); render(); renderBottom(); loadList();
 }
 window.addEventListener('resize', () => { render(); });
-{   // 下のパネル(エディタ・ライブラリ・コード・録音結果)の高さを、ドラッグで変える
+{   // 下のパネル(エディタ・ライブラリ・コード)の高さを、ドラッグで変える
   const bot = $('#bot'), sp = $('#split'), KEY = 'botH';
   const setH = v => { bot.style.height = clamp(v, 120, innerHeight - 220) + 'px'; };
   try { const v = +localStorage.getItem(KEY); if (v) setH(v); } catch (e) { /* 無視 */ }

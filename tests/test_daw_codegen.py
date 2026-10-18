@@ -173,3 +173,23 @@ def test_track_color_and_markers_kept():
     p = g.validate(pr)
     assert p["markers"] == [{"bar": 1, "name": "サビ"}]
     assert p["tracks"][0]["color"] == "#ff0000" and "color" not in p["tracks"][1]
+
+
+def test_piano_keeps_natural_envelope():
+    p = {"name": "p", "bpm": 130, "bars": 1, "key": {"root": "c", "scale": "minor"}, "prog": [None],
+         "tracks": [{"name": "P", "kind": "melody", "voice": {"name": "piano", "amp": 0.5, "env": "pad", "cutoff": 90},
+                     "notes": [[0, "c5", 1]]}]}
+    line = [x for x in g.generate(p).splitlines() if "play n" in x and "piano" not in x][-1]
+    assert "vel: 0.5" in line and "amp: 0.1" in line
+    assert not any(k in line for k in ("attack", "release", "sustain", "cutoff"))
+
+
+def test_slice_project_plays_from_the_middle():
+    p = {"name": "s", "bpm": 120, "bars": 4, "key": {"root": "c", "scale": "minor"}, "prog": [None] * 4,
+         "tracks": [{"name": "K", "kind": "drum", "voice": {"name": "bd_haus"}, "steps": "X... .... .... .... | " * 3 + "X... .... .... ...."},
+                    {"name": "L", "kind": "melody", "voice": {"name": "saw"}, "notes": [[0, "c4", 8], [9, "d4", 1], [15, "e4", 1]]}]}
+    s = g.slice_project(p, 2 * 16, 4 * 16 - 16 + 8)   # 3 小節目の頭から、4 小節目の途中まで
+    assert s["bars"] == 2
+    assert s["tracks"][0]["steps"].startswith("X...........")
+    assert s["tracks"][1]["notes"][0] == [1, "d4", 1]   # 8 拍 = 3 小節目の頭(拍 8)より前の c4 は消え、拍 9 の d4 は 1 拍目へ
+    assert "use_bpm 120" in g.generate(s)
