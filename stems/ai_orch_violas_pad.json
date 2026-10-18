@@ -3,6 +3,7 @@
   "kind": "chord",
   "voice": {
     "name": "work/samples/viola_section",
+    "amp": 1.06,
     "pan": 0.25,
     "cutoff": 100,
     "env": "pad"

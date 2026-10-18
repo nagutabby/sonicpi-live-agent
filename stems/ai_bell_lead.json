@@ -3,6 +3,7 @@
   "kind": "melody",
   "voice": {
     "name": "pretty_bell",
+    "amp": 0.5,
     "pan": 0.2,
     "cutoff": 110,
     "env": "pluck"

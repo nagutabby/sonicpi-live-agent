@@ -3,6 +3,7 @@
   "kind": "chord",
   "voice": {
     "name": "supersaw",
+    "amp": 0.4,
     "pan": 0,
     "cutoff": 95,
     "env": "pad"

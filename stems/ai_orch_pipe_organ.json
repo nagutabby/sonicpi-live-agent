@@ -3,6 +3,7 @@
   "kind": "chord",
   "voice": {
     "name": "work/samples/pipe_organ",
+    "amp": 0.45,
     "pan": 0,
     "cutoff": 95,
     "env": "pad"

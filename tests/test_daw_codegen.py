@@ -9,7 +9,7 @@ PROJ = {
         {"name": "Bass", "kind": "bass", "voice": {"name": "sine", "amp": 0.8}, "steps": "X--- ---- ---- ----"},
         {"name": "Keys", "kind": "chord", "voice": {"name": "supersaw", "amp": 0.5}, "steps": "x--. ..x- .... ....", "octave": 4},
         {"name": "Lead", "kind": "melody", "voice": {"name": "saw", "amp": 0.4},
-         "notes": [[0, "eb4", 0.5, 90], [1.5, "gb4", 1, 70], [9, "bb4", 2, 50]]},
+         "notes": [[0, "eb4", 0.5, 100], [1.5, "gb4", 1, 80], [9, "bb4", 2, 60]]},
     ],
 }
 
@@ -18,12 +18,13 @@ def test_generate_is_valid_sonicpi(tmp_path):
     import subprocess
     import sys
     code = g.generate(PROJ)
-    # 古い形式(トラックの音量 + X)は、ノート・1 マスごとのベロシティに引き継がれる(amp 1 → ベロシティ 42)
-    assert "hits_kick = [[0, 44], [2, 44]]" in code and "hits_kick.each do |b, vel|" in code
+    # 古い形式(X)は既定のベロシティ 60 の音になり、トラックの amp はそのまま音量(amp × ベロシティ ÷ 60)になる
+    assert "hits_kick = [[0, 60], [2, 60]]" in code and "hits_kick.each do |b, vel|" in code
+    assert "amp: 1 * vel / 60.0" in code and "amp: 0.8 * vel / 60.0" in code
     # 古い形式のグリッド(bass / chord)は、コード進行から音程つきの音に直る
-    assert "notes_bass = [[0, :eb2, 4, 34]" in code
-    assert "notes_keys = [[0, :eb4, 0.75, 21], [0, :fs4, 0.75, 21]" in code
-    assert "notes_lead = [[0, :eb4, 0.5, 90], [1.5, :gb4, 1, 70], [7.875, :bb4, 0.125, 50]]" in code  # 曲の外の音は末尾に丸める(0.125 拍刻み)
+    assert "notes_bass = [[0, :eb2, 4, 60]" in code
+    assert "notes_keys = [[0, :eb4, 0.75, 60], [0, :fs4, 0.75, 60]" in code
+    assert "notes_lead = [[0, :eb4, 0.5, 100], [1.5, :gb4, 1, 80], [7.875, :bb4, 0.125, 60]]" in code  # 曲の外の音は末尾に丸める(0.125 拍刻み)
     f = tmp_path / "gen.rb"
     f.write_text(code, encoding="utf-8")
     r = subprocess.run([sys.executable, str(g.ROOT / "scripts" / "live_check.py"), str(f)], capture_output=True, text=True)
@@ -94,7 +95,7 @@ def test_preset_keeps_tracks_and_voices_and_clears_mute():
     proj["tracks"][0]["mute"] = True
     pr = g.validate_preset({"name": " 曲A ", "project": proj})
     assert pr["name"] == "曲A" and len(pr["project"]["tracks"]) == 4
-    assert pr["project"]["tracks"][0]["voice"]["name"] == "bd_haus" and pr["project"]["tracks"][0]["steps"].startswith(g.vel_level(42) + "...")
+    assert pr["project"]["tracks"][0]["voice"]["name"] == "bd_haus" and pr["project"]["tracks"][0]["hits"][0] == [0, 60, 0.25]
     assert pr["project"]["tracks"][3]["notes"] and not any(t["mute"] or t["solo"] for t in pr["project"]["tracks"])
     assert pr["project"]["prog"] == [["eb", "minor7"], ["bb", "dom7"]]
     for bad in ({"name": "", "project": PROJ}, {"name": "x", "project": {"tracks": [{"kind": "drum", "voice": {"name": "nope"}}]}}):
@@ -103,30 +104,29 @@ def test_preset_keeps_tracks_and_voices_and_clears_mute():
 
 
 def test_drum_hits_carry_their_own_velocity():
-    p = {**PROJ, "tracks": [{"id": "k", "kind": "drum", "voice": {"name": "bd_haus"}, "steps": "z1o5 .-.. ...."}]}
-    assert g.validate(p)["tracks"][0]["steps"].startswith("z1o5.-..")   # 1 マスごとのベロシティ(1 = 最弱 … z = 最強)
-    assert "hits_k = [[0, 127], [0.25, 4], [0.5, 87], [0.75, 18]]" in g.generate(p)
+    p = {**PROJ, "tracks": [{"id": "k", "kind": "drum", "voice": {"name": "bd_haus"}, "hits": [[0.5, 87], [0, 127], [0.25, 4, 0.5]]}]}
+    t = g.validate(p)["tracks"][0]
+    assert t["hits"] == [[0, 120, 0.25], [0.25, 20, 0.5], [0.5, 80, 0.25]] and "steps" not in t   # 拍の順。ベロシティは 20 刻み(20〜120)
+    assert "hits_k = [[0, 120], [0.25, 20], [0.5, 80]]" in g.generate(p)
+    # 中間の形式(steps のベロシティの文字 1〜9 a〜z)も、整数のベロシティに直る
+    old = {**PROJ, "tracks": [{"id": "k", "kind": "drum", "voice": {"name": "bd_haus"}, "steps": "z1o5 .-.. ...."}]}
+    assert [h[:2] for h in g.validate(old)["tracks"][0]["hits"]] == [[0, 120], [0.25, 20], [0.5, 80], [0.75, 20]]
 
 
-def test_velocity_is_required_per_note_and_per_hit():
-    for bad in ({"kind": "melody", "voice": {"name": "saw"}, "notes": [[0, "c4", 1]]},   # ノートにベロシティがない
-                {"kind": "drum", "voice": {"name": "bd_haus"}, "steps": "X..."}):        # X にはベロシティがない
-        with pytest.raises(ValueError):
-            g.validate({"bars": 1, "tracks": [bad]})
-    v = g.validate({"bars": 1, "tracks": [{"kind": "melody", "voice": {"name": "saw"}, "notes": [[0, "c4", 1, 300]]}]})
-    assert v["tracks"][0]["notes"] == [[0, "c4", 1, 127]] and "velocity" not in v["tracks"][0]["voice"]   # 範囲外は直す。トラックの音量は持たない
-
-
-def test_stem_source_ai_is_kept_and_default_user():
-    base = {"name": "S", "kind": "bass", "voice": {"name": "sine"}}
-    assert g.validate_stem({**base, "source": "ai"})["source"] == "ai"
-    assert g.validate_stem(base)["source"] == "user"
-    assert g.validate_stem({**base, "source": "<script>"})["source"] == "user"
+def test_velocity_defaults_to_60_and_can_be_omitted():
+    t = g.validate({"bars": 1, "tracks": [{"kind": "melody", "voice": {"name": "saw"}, "notes": [[0, "c4", 1], [1, "d4", 1, 60], [2, "e4", 1, 300]]},
+                                          {"kind": "drum", "voice": {"name": "bd_haus"}, "hits": [[0], [1, 40], [2, None, 0.5]]}]})["tracks"]
+    assert [n[3] for n in t[0]["notes"]] == [60, 60, 120] and g.VEL_DEFAULT == 60     # 省略 = 60。範囲外は直す
+    assert [h[1] for h in t[1]["hits"]] == [60, 40, 60] and t[1]["hits"][2][2] == 0.5
+    assert [g.quant_vel(x) for x in (0, 29, 30, 69, 70, 130)] == [20, 20, 40, 60, 80, 120]   # ベロシティは 20 刻み
+    assert "velocity" not in t[0]["voice"]                                               # トラックの音量は持たない
+    with pytest.raises(ValueError):
+        g.validate({"bars": 1, "tracks": [{"kind": "drum", "voice": {"name": "bd_haus"}, "hits": [[]]}]})   # 位置もない
 
 
 # ---- エフェクト(fx) ----
 def fx_project(*fx):
-    music = [{"id": "kick", "kind": "drum", "voice": {"name": "bd_haus"}, "steps": "h..." * 4},
+    music = [{"id": "kick", "kind": "drum", "voice": {"name": "bd_haus"}, "hits": [[0, 64], [1, 64], [2, 64], [3, 64]]},
              {"id": "bass", "kind": "bass", "voice": {"name": "sine"}, "notes": [[0, "c2", 1, 64]]}]
     return {"bars": 1, "tracks": music + list(fx)}
 
@@ -190,29 +190,29 @@ def test_piano_keeps_natural_envelope():
          "tracks": [{"name": "P", "kind": "melody", "voice": {"name": "piano", "env": "pad", "cutoff": 90},
                      "notes": [[0, "c5", 1, 64]]}]}
     line = [x for x in g.generate(p).splitlines() if "play n" in x and "piano" not in x][-1]
-    assert "vel: vel / 127.0" in line and "amp: vel / 127.0 * 3 * 0.2" in line   # ベロシティは音量と打鍵の強さの両方に効く
+    assert "vel: vel / 127.0" in line and "amp: 1 * vel / 60.0 * 0.2" in line   # ベロシティは音量と打鍵の強さの両方に効く
     assert "sustain: l" in line   # 音の長さで鳴らす(渡さないと約 1 拍で切れる)
     assert not any(k in line for k in ("attack", "release", "cutoff"))
 
 
 def test_slice_project_plays_from_the_middle():
     p = {"name": "s", "bpm": 120, "bars": 4, "key": {"root": "c", "scale": "minor"}, "prog": [None] * 4,
-         "tracks": [{"name": "K", "kind": "drum", "voice": {"name": "bd_haus"}, "steps": "h... .... .... .... | " * 3 + "h... .... .... ...."},
+         "tracks": [{"name": "K", "kind": "drum", "voice": {"name": "bd_haus"}, "hits": [[0, 60], [4, 60], [8, 60], [12, 60]]},
                     {"name": "L", "kind": "melody", "voice": {"name": "saw"}, "notes": [[0, "c4", 8, 64], [9, "d4", 1, 64], [15, "e4", 1, 64]]}]}
     s = g.slice_project(p, 2 * 16, 4 * 16 - 16 + 8)   # 3 小節目の頭から、4 小節目の途中まで
     assert s["bars"] == 2
-    assert s["tracks"][0]["steps"].startswith("h...........")
-    assert s["tracks"][1]["notes"][0] == [1, "d4", 1, 64]   # 8 拍 = 3 小節目の頭(拍 8)より前の c4 は消え、拍 9 の d4 は 1 拍目へ
+    assert s["tracks"][0]["hits"][0] == [0, 60, 0.25]   # 3 小節目の頭(拍 8)が先頭になる
+    assert s["tracks"][1]["notes"][0] == [1, "d4", 1, 60]   # 8 拍 = 3 小節目の頭(拍 8)より前の c4 は消え、拍 9 の d4 は 1 拍目へ
     assert "use_bpm 120" in g.generate(s)
 
 
 def test_drum_rate_reverses_sample():
     p = {"name": "r", "bpm": 130, "bars": 1, "key": {"root": "c", "scale": "minor"}, "prog": [None],
-         "tracks": [{"name": "Rev", "kind": "drum", "voice": {"name": "drum_cymbal_open", "rate": -1}, "steps": "h..."},
-                    {"name": "K", "kind": "drum", "voice": {"name": "bd_haus", "rate": 1}, "steps": "h..."}]}
+         "tracks": [{"name": "Rev", "kind": "drum", "voice": {"name": "drum_cymbal_open", "rate": -1}, "hits": [[0, 64]]},
+                    {"name": "K", "kind": "drum", "voice": {"name": "bd_haus", "rate": 1}, "hits": [[0, 64]]}]}
     code = g.generate(p)
-    assert "sample :drum_cymbal_open, amp: vel / 127.0 * 3, rate: -1" in code
-    assert "sample :bd_haus, amp: vel / 127.0 * 3\n" in code   # rate 1 は出さない
+    assert "sample :drum_cymbal_open, amp: 1 * vel / 60.0, rate: -1" in code
+    assert "sample :bd_haus, amp: 1 * vel / 60.0\n" in code   # rate 1 は出さない
 
 
 def test_pitch_bend_note_is_kept_and_generated():
@@ -258,14 +258,16 @@ def test_record_video_flag_end_time():
 def test_note_positions_keep_eighth_beat_resolution():
     proj = {"bpm": 120, "bars": 1, "tracks": [
         {"id": "p", "name": "p", "kind": "melody", "voice": {"name": "piano"}, "notes": [[2.125, "c5", 1.875, 64]]}]}
-    assert g.validate(proj)["tracks"][0]["notes"][0] == [2.125, "c5", 1.875, 64]
+    assert g.validate(proj)["tracks"][0]["notes"][0] == [2.125, "c5", 1.875, 60]
 
 
-def test_legacy_track_volume_migrates_to_notes_and_hits():
+def test_amp_and_velocity_coexist():
     def tr(kind, **kw):
         return g.validate({"bars": 1, "tracks": [{"id": "t", "kind": kind, "name": "t", **kw}]})["tracks"][0]
-    t = tr("melody", voice={"name": "saw", "amp": 0.8}, notes=[[0, "c4", 1]])
-    assert t["notes"] == [[0, "c4", 1, 34]] and "amp" not in t["voice"]     # 古い amp(0.8 ÷ 3 × 127)がノートに入る
-    t = tr("melody", voice={"name": "saw", "velocity": 90}, notes=[[0, "c4", 1], [1, "d4", 1, 20]])
-    assert [n[3] for n in t["notes"]] == [90, 20]                           # ノート自身のベロシティが優先
-    assert g.vel_to_amp(127) == 3.0 and g.level_vel(g.vel_level(100)) in range(98, 103)
+    t = tr("melody", voice={"name": "saw", "amp": 0.8}, notes=[[0, "c4", 1], [1, "d4", 1, 40]])
+    assert t["voice"]["amp"] == 0.8 and [n[3] for n in t["notes"]] == [60, 40]   # amp はトラックの音量、ベロシティは音ごとの強さ
+    assert g.note_amp(0.8, 60) == 0.8 and g.note_amp(0.8, 120) == 1.6            # 最終の amp = amp × ベロシティ ÷ 60
+    assert "amp: 0.8 * vel / 60.0" in g.generate({"bars": 1, "tracks": [{"id": "t", "kind": "melody", "voice": {"name": "saw", "amp": 0.8}, "notes": [[0, "c4", 1]]}]})
+    assert tr("melody", voice={"name": "saw"}, notes=[])["voice"]["amp"] == 1.0    # 省略すると 1
+    assert tr("melody", voice={"name": "saw", "amp": 99}, notes=[])["voice"]["amp"] == g.AMP_MAX   # 範囲外は直す
+    assert tr("melody", voice={"name": "saw", "velocity": 64}, notes=[])["voice"]["amp"] == 1.512  # 中間の形式(トラックの velocity)は amp に直る

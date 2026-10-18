@@ -3,6 +3,7 @@
   "kind": "bass",
   "voice": {
     "name": "work/samples/tuba",
+    "amp": 0.7,
     "pan": 0,
     "cutoff": 80,
     "env": "stab"

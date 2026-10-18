@@ -3,6 +3,7 @@
   "kind": "melody",
   "voice": {
     "name": "piano",
+    "amp": 0.06,
     "pan": 0.0,
     "cutoff": 100,
     "env": "stab"

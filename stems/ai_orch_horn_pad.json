@@ -3,6 +3,7 @@
   "kind": "chord",
   "voice": {
     "name": "work/samples/horn",
+    "amp": 0.5,
     "pan": 0,
     "cutoff": 90,
     "env": "pad"

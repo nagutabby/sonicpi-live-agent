@@ -3,6 +3,7 @@
   "kind": "drum",
   "voice": {
     "name": "bd_klub",
+    "amp": 1.0,
     "pan": 0.0
   },
   "description": "アタックの立つクラブ系キック",

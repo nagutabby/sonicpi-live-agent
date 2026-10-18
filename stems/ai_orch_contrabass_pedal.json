@@ -3,6 +3,7 @@
   "kind": "bass",
   "voice": {
     "name": "work/samples/contrabass",
+    "amp": 1.3,
     "pan": 0,
     "cutoff": 85,
     "env": "pad"

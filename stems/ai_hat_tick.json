@@ -3,6 +3,7 @@
   "kind": "drum",
   "voice": {
     "name": "elec_tick",
+    "amp": 0.35,
     "pan": 0.0
   },
   "description": "細かく刻む電子的なハット",

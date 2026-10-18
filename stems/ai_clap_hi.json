@@ -3,6 +3,7 @@
   "kind": "drum",
   "voice": {
     "name": "elec_hi_snare",
+    "amp": 0.6,
     "pan": 0.0
   },
   "description": "スネアに重ねる軽い高めの音",

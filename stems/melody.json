@@ -3,6 +3,7 @@
   "kind": "melody",
   "voice": {
     "name": "prophet",
+    "amp": 0.5,
     "pan": 0,
     "cutoff": 100,
     "env": "stab"

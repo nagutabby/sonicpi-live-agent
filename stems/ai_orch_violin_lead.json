@@ -3,6 +3,7 @@
   "kind": "melody",
   "voice": {
     "name": "work/samples/violin_section",
+    "amp": 1.3,
     "pan": 0.1,
     "cutoff": 110,
     "env": "stab"

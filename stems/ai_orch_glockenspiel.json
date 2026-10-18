@@ -3,6 +3,7 @@
   "kind": "melody",
   "voice": {
     "name": "work/samples/glockenspiel",
+    "amp": 0.6,
     "pan": 0.3,
     "cutoff": 120,
     "env": "pluck"

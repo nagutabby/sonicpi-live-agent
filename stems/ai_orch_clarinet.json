@@ -3,6 +3,7 @@
   "kind": "melody",
   "voice": {
     "name": "work/samples/clarinet",
+    "amp": 0.65,
     "pan": 0.1,
     "cutoff": 110,
     "env": "stab"

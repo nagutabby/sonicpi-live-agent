@@ -3,6 +3,7 @@
   "kind": "melody",
   "voice": {
     "name": "work/samples/oboe",
+    "amp": 0.65,
     "pan": -0.2,
     "cutoff": 110,
     "env": "stab"

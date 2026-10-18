@@ -3,6 +3,7 @@
   "kind": "drum",
   "voice": {
     "name": "work/samples/timpani/Timpani4_Hit_v3_rr1_Sum.wav",
+    "amp": 1.0,
     "pan": 0
   },
   "description": "ティンパニの打音(ピッチ固定のワンショット)。ドロップ前のロールやアクセントに",

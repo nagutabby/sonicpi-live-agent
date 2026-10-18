@@ -3,6 +3,7 @@
   "kind": "chord",
   "voice": {
     "name": "work/samples/cello_section",
+    "amp": 1.13,
     "pan": 0,
     "cutoff": 95,
     "env": "pad"

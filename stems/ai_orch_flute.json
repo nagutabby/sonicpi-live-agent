@@ -3,6 +3,7 @@
   "kind": "melody",
   "voice": {
     "name": "work/samples/flute",
+    "amp": 0.7,
     "pan": 0.2,
     "cutoff": 110,
     "env": "stab"

@@ -3,6 +3,7 @@
   "kind": "melody",
   "voice": {
     "name": "work/samples/trumpet",
+    "amp": 0.6,
     "pan": 0.1,
     "cutoff": 110,
     "env": "stab"

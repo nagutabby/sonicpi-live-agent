@@ -3,6 +3,7 @@
   "kind": "chord",
   "voice": {
     "name": "work/samples/violin_section",
+    "amp": 1.06,
     "pan": -0.25,
     "cutoff": 110,
     "env": "swell"

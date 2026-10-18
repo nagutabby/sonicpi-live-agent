@@ -3,6 +3,7 @@
   "kind": "bass",
   "voice": {
     "name": "growl",
+    "amp": 0.5,
     "pan": 0.0,
     "cutoff": 90,
     "env": "stab"

@@ -3,6 +3,7 @@
   "kind": "chord",
   "voice": {
     "name": "work/samples/harp",
+    "amp": 0.8,
     "pan": 0.15,
     "cutoff": 110,
     "env": "stab"
