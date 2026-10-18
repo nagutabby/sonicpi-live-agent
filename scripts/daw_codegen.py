@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 from common import ROOT
 
@@ -35,9 +36,13 @@ FX_INFO = {
     "slicer": ("スライサー", "音を刻んで断続的に切る", 1, {"phase": ("周期(拍)", 0.125, 1, 0.25), "pulse_width": ("音が鳴る割合", 0.1, 0.9, 0.5)}),
     "wobble": ("ワブル", "フィルターを往復させて、うねらせる", 1, {"phase": ("周期(拍)", 0.25, 4, 1), "cutoff_min": ("最小カットオフ", 30, 100, 60), "cutoff_max": ("最大カットオフ", 60, 130, 110)}),
     "bitcrusher": ("ビットクラッシャー", "解像度を落として、ざらざらしたデジタル音にする", 0.6, {"bits": ("ビット数", 4, 16, 8), "sample_rate": ("サンプルレート", 1000, 44100, 8000)}),
+    "vowel": ("フォルマント(母音)", "声の母音の響き(フォルマント)を作り、声らしくする", 1, {"vowel_sound": ("母音(1あ 2え 3い 4お 5う)", 1, 5, 4), "voice": ("声の種類(0〜4 高い→低い)", 0, 4, 4)}),
     "sidechain": ("サイドチェイン", "グリッドの X の位置で対象の音量を下げ、すぐ戻す。キックに合わせて他の音が息をする", 1, {"depth": ("下げる深さ", 0, 1, 0.8), "release": ("戻る時間(拍)", 0.05, 1.5, 0.4)}),
 }
-INT_PARAMS = {"bits", "sample_rate"}
+MAX_NOTES = 4096   # 1 トラックの音の最大数(超えた分は末尾から捨てられる)
+MAX_TRACKS = 40   # トラックの最大数(超えた分は末尾から捨てられる)
+MAX_BARS = 128   # 曲の最大小節数
+INT_PARAMS = {"bits", "sample_rate", "vowel_sound", "voice"}
 ENVS = ("pluck", "stab", "pad", "swell")
 PITCH = re.compile(r"^([a-g])([sb]?)(-?\d)$")
 ROOTS = ("c", "cs", "d", "eb", "e", "f", "fs", "g", "ab", "a", "bb", "b")
@@ -205,6 +210,12 @@ def fx_track(t: dict, tid: str, v: dict, want: int) -> dict:
            "targets": [ident(i, "x") for i in ids][:24], "mute": bool(t.get("mute")), "solo": False}
     if name == "sidechain":
         out["steps"] = norm_steps(t.get("steps"), want, tid)
+    au = t.get("automation")   # {"param": "cutoff", "points": [[拍, 値], …]}: 値を時間で動かす(点の間は直線でなめらかに)
+    if isinstance(au, dict) and (au.get("param") in spec or au.get("param") == "mix") and isinstance(au.get("points"), list):
+        lo, hi = (0, 1) if au["param"] == "mix" else spec[au["param"]][1:3]
+        pts = sorted({(round(num(x[0], 0, want, 0) * 4) / 4, round(num(x[1], lo, hi, lo), 3)) for x in au["points"][:64]})
+        if len(pts) >= 2:
+            out["automation"] = {"param": au["param"], "points": [list(x) for x in pts]}
     return out
 
 
@@ -212,7 +223,7 @@ def validate(project: dict) -> dict:
     """範囲外・不正な値は直すか、ValueError。戻り値は正規化したプロジェクト。"""
     cat = catalog()
     bpm = num(project.get("bpm"), 40, 240, 120)
-    bars = int(num(project.get("bars"), 1, 32, 4))
+    bars = int(num(project.get("bars"), 1, MAX_BARS, 4))
     res, meter = 4, int(num(project.get("meter"), 2, 7, 4))
     key = project.get("key") or {}
     key_root = key.get("root") if key.get("root") in ROOTS else "c"
@@ -230,7 +241,7 @@ def validate(project: dict) -> dict:
     prog = prog or [tonic]
     cells_bar = res * meter
     tracks, seen = [], set()
-    for i, t in enumerate((project.get("tracks") or [])[:24]):
+    for i, t in enumerate((project.get("tracks") or [])[:MAX_TRACKS]):
         kind = t.get("kind")
         if kind not in KINDS:
             raise ValueError(f"トラックの種類が不正です: {kind}")
@@ -244,23 +255,36 @@ def validate(project: dict) -> dict:
             tracks.append(fx_track(t, tid, v, bars * cells_bar))
             continue
         pool = cat["samples"] if kind == "drum" else cat["synths"]
-        if name not in pool:
+        if kind == "drum" and is_vocal_wav(name):   # ボコーダーで作った wav(work/vocals 内)は、サンプル名の代わりにパスで指せる
+            pass
+        elif name not in pool:
             raise ValueError(f"{tid}: 音色が見つかりません: {name}")
         voice = {"name": name, "amp": round(num(v.get("amp", v.get("velocity")), 0, 2, 0.8), 3), "pan": round(num(v.get("pan"), -1, 1, 0), 2)}
+        if kind == "drum" and num(v.get("rate"), -2, 2, 1) not in (0, 1):   # サンプルの再生速度。-1 = 逆再生(リバース)
+            voice["rate"] = round(num(v.get("rate"), -2, 2, 1), 2)
         if kind != "drum":
             voice["cutoff"] = int(num(v.get("cutoff"), 20, 130, 100))
             voice["env"] = v.get("env") if v.get("env") in ENVS else "stab"
+            if num(v.get("glide"), 0, 2, 0) > 0:   # グライド(ポルタメント): 次の音に続くとき、音の最後の glide 拍で次の音程へ滑る
+                voice["glide"] = round(num(v.get("glide"), 0, 2, 0), 2)
+            if name.startswith("mod_"):   # mod_* は音程を周期的に揺らせる。ビブラート = 小さい mod_range をゆっくり揺らす
+                voice["mod_range"] = round(num(v.get("mod_range"), 0, 12, 0.4), 2)    # 揺れの幅(半音)
+                voice["mod_phase"] = round(num(v.get("mod_phase"), 0.05, 2, 0.35), 2)  # 揺れの周期(拍)
         if kind != "drum":  # bass / chord / melody はすべて音程つきの音(ピアノロール)
             beats_total = bars * meter
             raw = t.get("notes")
             if raw is None and t.get("steps"):  # 古い形式(コード進行に従うグリッド)は、音程つきの音に直す
                 raw = legacy_notes(kind, str(t["steps"]), [c or tonic for c in prog], res, cells_bar, int(num(t.get("octave"), 2, 6, 4)))
             notes = []
-            for n in (raw or [])[:512]:
-                beat = round(num(n[0], 0, beats_total - 0.25, 0) * res) / res
-                ln = max(round(num(n[2], 0.25, beats_total, 0.5) * res) / res, 1 / res)
+            note_res = res * 2
+            for n in (raw or [])[:MAX_NOTES]:
+                beat = round(num(n[0], 0, beats_total - 0.125, 0) * note_res) / note_res   # 音の位置・長さは 0.125 拍刻み(溜めなどの微妙なずらし用)
+                ln = max(round(num(n[2], 0.125, beats_total, 0.5) * note_res) / note_res, 1 / note_res)
                 pitch_sym(n[1])
-                notes.append([beat, str(n[1]).lower(), min(ln, beats_total - beat)])
+                item = [beat, str(n[1]).lower(), min(ln, beats_total - beat)]
+                if len(n) > 3 and num(n[3], -24, 24, 0):   # ピッチベンド(半音): 音の長さをかけて、この分だけ音程が動く
+                    item.append(round(num(n[3], -24, 24, 0), 2))
+                notes.append(item)
             notes.sort(key=lambda x: (x[0], name_midi(x[1])))
             tracks.append({"id": tid, "name": str(t.get("name") or tid)[:24], "kind": kind, "voice": voice,
                            "notes": notes, "mute": bool(t.get("mute")), "solo": bool(t.get("solo"))})
@@ -269,7 +293,7 @@ def validate(project: dict) -> dict:
         out = {"id": tid, "name": str(t.get("name") or tid)[:24], "kind": kind, "voice": voice, "steps": steps,
                "mute": bool(t.get("mute")), "solo": bool(t.get("solo"))}
         tracks.append(out)
-    for x, raw in zip(tracks, (project.get("tracks") or [])[:24], strict=True):  # 表示色(#rrggbb)だけ引き継ぐ
+    for x, raw in zip(tracks, (project.get("tracks") or [])[:MAX_TRACKS], strict=True):  # 表示色(#rrggbb)だけ引き継ぐ
         c = raw.get("color")
         if isinstance(c, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", c):
             x["color"] = c.lower()
@@ -301,16 +325,62 @@ def slice_project(project: dict, start_cell: int = 0, end_cell: int | None = Non
         x = {**t}
         if "steps" in x:
             x["steps"] = x["steps"][a:b]   # 足りない分は validate が休みで埋める
+        if x.get("automation"):   # 範囲の頭の値から始める
+            pts = x["automation"]["points"]
+
+            def at(b, pts=pts):
+                if b <= pts[0][0]:
+                    return pts[0][1]
+                for (b0, v0), (b1, v1) in zip(pts, pts[1:], strict=False):
+                    if b0 <= b <= b1:
+                        return v0 + (v1 - v0) * (b - b0) / (b1 - b0) if b1 > b0 else v1
+                return pts[-1][1]
+            q = [[0, at(t0)]] + [[b - t0, v] for b, v in pts if t0 < b < t1] + [[t1 - t0, at(t1)]]
+            x["automation"] = {**x["automation"], "points": q}
         if "notes" in x:
             notes = []
             for n in x["notes"]:   # 範囲の前から鳴っている音は、範囲の頭から残りの長さで鳴らし直す
                 s, e = max(n[0], t0), min(n[0] + n[2], t1)
                 if e > s:
-                    notes.append([s - t0, n[1], e - s])
+                    notes.append([s - t0, n[1], e - s] + (n[3:] if (s, e) == (n[0], n[0] + n[2]) else []))
             x["notes"] = notes
         tracks.append(x)
     first = a // cb
     return {**p, "bars": bars, "prog": p["prog"][first : first + bars] or [None], "markers": [], "tracks": tracks}
+
+
+def bend_rows(notes: list, glide: float):
+    """ピッチベンドかグライドがあるトラックの音を、[拍, 音名, 長さ, ベンド(半音), 滑り始めまでの拍, 滑る拍数] にする。なければ None。
+    グライド: 次の音がちょうど続いて始まり(和音なら音程がいちばん近い音へ、7 半音以内)、音程が違うとき、最後の glide 拍で滑る。"""
+    if not glide and not any(len(n) > 3 for n in notes):
+        return None
+    rows = []
+    for n in notes:
+        bd, gs, g = (n[3] if len(n) > 3 else 0), 0.0, max(n[2], 0.25)
+        if len(n) > 3:
+            gs, g = 0.0, n[2]
+        elif glide:
+            nxt = [m for m in notes if m is not n and abs(m[0] - (n[0] + n[2])) < 0.01]
+            if nxt:
+                d = min((name_midi(m[1]) - name_midi(n[1]) for m in nxt), key=abs)
+                if 0 < abs(d) <= 7:
+                    g = min(glide, n[2])
+                    bd, gs = d, n[2] - g
+        rows.append([n[0], n[1], n[2], bd, gs, g])
+    return rows
+
+
+def is_vocal_wav(name) -> bool:
+    """work/vocals/ の中の、実在する .wav への絶対パスか(ボーカルの wav を DAW のドラム行で鳴らす用)。"""
+    try:
+        p = Path(str(name)).resolve()
+        return p.suffix == ".wav" and p.is_file() and p.is_relative_to((ROOT / "work" / "vocals").resolve())
+    except (OSError, ValueError):
+        return False
+
+
+def sample_ref(name: str) -> str:
+    return json.dumps(name) if name.startswith("/") else f":{name}"
 
 
 def fmt_pattern(steps: str, res: int, meter: int) -> str:
@@ -327,7 +397,8 @@ PIANO_AMP = 0.2   # :piano は他のシンセよりかなり大きく鳴るの�
 
 def opts_str(voice: dict, kind: str) -> str:
     if kind != "drum" and voice["name"] == "piano":
-        # :piano は自然な減衰が音色なので、attack / release / sustain / cutoff は渡さない。
+        # :piano は自然な減衰が音色。attack / cutoff は渡さない(attack は短くする向きにしか効かない)。
+        # 音の長さ(sustain)は渡す: 渡さないと、既定の sustain 0 / release 1 で約 1 拍で切れてしまう。長い音ほど長く鳴る。
         # amp は音量と、打鍵の強さ(vel。強いほど明るく硬い音)の両方に効かせる
         parts = [f"amp: {voice['amp'] * PIANO_AMP:g}", f"vel: {min(voice['amp'], 1):g}"]
         if voice.get("pan"):
@@ -336,9 +407,13 @@ def opts_str(voice: dict, kind: str) -> str:
     parts = [f"amp: {voice['amp']:g}"]
     if voice.get("pan"):
         parts.append(f"pan: {voice['pan']:g}")
+    if voice.get("rate"):
+        parts.append(f"rate: {voice['rate']:g}")
     if kind != "drum":
         att, rel = ENV_BEATS[voice["env"]]
         parts += [f"cutoff: {voice['cutoff']}", f"attack: {att:g}", f"release: {rel:g}"]
+        if "mod_range" in voice:
+            parts += [f"mod_range: {voice['mod_range']:g}", f"mod_phase: {voice['mod_phase']:g}", "mod_wave: 3"]   # 3 = サイン波
     return ", ".join(parts)
 
 
@@ -351,7 +426,23 @@ def active(tracks: list[dict]) -> list[dict]:
 
 def fx_opts(fx: dict) -> str:
     v = fx["voice"]
-    return ", ".join([f"mix: {v['mix']:g}"] + [f"{k}: {x:g}" for k, x in v["params"].items()])
+    vals = {"mix": v["mix"], **v["params"]}
+    au = fx.get("automation")
+    if au:   # オートメーションの最初の値から始める
+        vals[au["param"]] = au["points"][0][1]
+    return ", ".join(f"{k}: {x:g}" for k, x in vals.items())
+
+
+def auto_loop(f: dict, sfx: str, pad: str, total: int) -> list[str]:
+    """オートメーションの live_loop: 点と点の間を、<param>_slide でなめらかに動かす。"""
+    au, fid = f["automation"], f["id"]
+    pts, prm = au["points"], au["param"]
+    segs = ", ".join(f"[{a[0]:g}, {b[0] - a[0]:g}, {b[1]:g}]" for a, b in zip(pts, pts[1:], strict=False))
+    lines = [f"auto_{fid}{sfx} = [{segs}]   # {f['name']}: [開始の拍, かける拍数, 行き先の値]",
+             f"live_loop :auto_{fid}{sfx} do", "  t = 0", f"  auto_{fid}{sfx}.each do |b, d, v|", "    sleep b - t",
+             f"    control fx_{fid}{sfx}, {prm}_slide: d", f"    control fx_{fid}{sfx}, {prm}: v", "    t = b", "  end",
+             f"  sleep {total} - t", "end"]
+    return [pad + ln for ln in lines]
 
 
 def generate(project: dict) -> str:
@@ -370,15 +461,24 @@ def generate(project: dict) -> str:
     for t in music:
         i, v = t["id"], t["voice"]
         if t["kind"] == "drum":
-            out += [f"voice_{i} = grid_voice :sample, :{v['name']}, {opts_str(v, 'drum')}",
+            out += [f"voice_{i} = grid_voice :sample, {sample_ref(v['name'])}, {opts_str(v, 'drum')}",
                     f"pat_{i} = \"{fmt_pattern(t['steps'], res, meter)}\""]
             loops[i] = [f"live_loop :{i} do grid_play voice_{i}, pat_{i} end"]
         else:
-            notes = ", ".join(f"[{n[0]:g}, {pitch_sym(n[1])}, {n[2]:g}]" for n in t["notes"])
-            out.append(f"notes_{i} = [{notes}]   # [拍の位置, 音名, 長さ(拍)]")
+            rows = bend_rows(t["notes"], v.get("glide", 0))
+            bent = rows is not None
+            if bent:
+                notes = ", ".join(f"[{r[0]:g}, {pitch_sym(r[1])}, {r[2]:g}, {r[3]:g}, {r[4]:g}, {r[5]:g}]" for r in rows)
+                out.append(f"notes_{i} = [{notes}]   # [拍の位置, 音名, 長さ(拍), ピッチベンド(半音), 滑り始めまでの拍, 滑る拍数]")
+                play = [f"    s = play n, {opts_str(v, 'note')}, sustain: l, note_slide: g",
+                        "    if bd != 0", "      in_thread do", "        sleep gs", "        control s, note: note(n) + bd", "      end", "    end"]
+            else:
+                notes = ", ".join(f"[{n[0]:g}, {pitch_sym(n[1])}, {n[2]:g}]" for n in t["notes"])
+                out.append(f"notes_{i} = [{notes}]   # [拍の位置, 音名, 長さ(拍)]")
+                play = [f"    play n, {opts_str(v, 'note')}, sustain: l"]
             loops[i] = [f"live_loop :{i} do", f"  use_synth :{v['name']}", "  t = 0",
-                        f"  notes_{i}.each do |b, n, l|", "    sleep b - t",
-                        f"    play n, {opts_str(v, 'note')}" + ("" if v["name"] == "piano" else ", sustain: l"), "    t = b", "  end",
+                        f"  notes_{i}.each do |b, n, l{', bd, gs, g' if bent else ''}|", "    sleep b - t",
+                        *play, "    t = b", "  end",
                         f"  sleep {total} - t", "end"]
     for f in fxs:
         if f["voice"]["name"] == "sidechain":
@@ -406,13 +506,19 @@ def generate(project: dict) -> str:
                 pad += "  "
                 head += duck_loop(f, sfx, pad, total)
             else:
-                head.append(f"{pad}with_fx :{f['voice']['name']}, {fx_opts(f)} do")
+                au = f.get("automation")
+                var = f" |fx_{fid}{sfx}|" if au else ""
+                head.append(f"{pad}with_fx :{f['voice']['name']}, {fx_opts(f)} do{var}")
                 pad += "  "
-        out += head + [pad + ln if ln else "" for ln in body]
+                if au:
+                    head += auto_loop(f, sfx, pad, total)
+        block = head + [pad + ln if ln else "" for ln in body]
         for _ in chain:
             pad = pad[:-2]
-            out.append(f"{pad}end")
-        out.append("")
+            block.append(f"{pad}end")
+        # グループごとに in_thread で並列に起動する。with_fx は 1 つずつ Sonic Pi の準備を待つので、続けて書くと待ち時間が足し算になり、
+        # 最後のほうの live_loop が「thread got too far behind time」で止まる(途中から再生したとき、音が消える)
+        out += ["in_thread do"] + [("  " + ln if ln else "") for ln in block] + ["end", ""]
     if not music:
         out += ["live_loop :silence do sleep 1 end", ""]
     return "\n".join(out)

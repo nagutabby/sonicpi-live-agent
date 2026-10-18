@@ -16,7 +16,7 @@ FileUtils.rm_f(out)
 
 boot = SonicPi::HeadlessBoot.new.boot!
 code = [
-  "set_sched_ahead_time! 0", # 録音の頭と音の頭を揃える(既定の 0.5 秒先行だと音が遅れる)
+  "set_sched_ahead_time! #{ENV.fetch("SONIC_PI_SCHED_AHEAD", "0")}", # 録音の頭と音の頭を揃える(既定の 0.5 秒先行だと音が遅れる)。重いコードは 0 だと「thread got too far behind time」になるので、環境変数で 0.5 などにして、頭の無音を切る
   "recording_start",
   "eval_file #{File.expand_path(file).inspect}", # 長いコードは OSC 1パケットに入らないのでファイル経由
   "recording_stop",

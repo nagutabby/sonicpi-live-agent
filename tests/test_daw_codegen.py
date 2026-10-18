@@ -22,7 +22,7 @@ def test_generate_is_valid_sonicpi(tmp_path):
     # 古い形式のグリッド(bass / chord)は、コード進行から音程つきの音に直る
     assert "notes_bass = [[0, :eb2, 4]" in code
     assert "notes_keys = [[0, :eb4, 0.75], [0, :fs4, 0.75]" in code
-    assert "notes_lead = [[0, :eb4, 0.5], [1.5, :gb4, 1], [7.75, :bb4, 0.25]]" in code  # 曲の外の音は末尾に丸める
+    assert "notes_lead = [[0, :eb4, 0.5], [1.5, :gb4, 1], [7.875, :bb4, 0.125]]" in code  # 曲の外の音は末尾に丸める(0.125 拍刻み)
     f = tmp_path / "gen.rb"
     f.write_text(code, encoding="utf-8")
     r = subprocess.run([sys.executable, str(g.ROOT / "scripts" / "live_check.py"), str(f)], capture_output=True, text=True)
@@ -181,7 +181,8 @@ def test_piano_keeps_natural_envelope():
                      "notes": [[0, "c5", 1]]}]}
     line = [x for x in g.generate(p).splitlines() if "play n" in x and "piano" not in x][-1]
     assert "vel: 0.5" in line and "amp: 0.1" in line
-    assert not any(k in line for k in ("attack", "release", "sustain", "cutoff"))
+    assert "sustain: l" in line   # 音の長さで鳴らす(渡さないと約 1 拍で切れる)
+    assert not any(k in line for k in ("attack", "release", "cutoff"))
 
 
 def test_slice_project_plays_from_the_middle():
@@ -193,3 +194,66 @@ def test_slice_project_plays_from_the_middle():
     assert s["tracks"][0]["steps"].startswith("X...........")
     assert s["tracks"][1]["notes"][0] == [1, "d4", 1]   # 8 拍 = 3 小節目の頭(拍 8)より前の c4 は消え、拍 9 の d4 は 1 拍目へ
     assert "use_bpm 120" in g.generate(s)
+
+
+def test_drum_rate_reverses_sample():
+    p = {"name": "r", "bpm": 130, "bars": 1, "key": {"root": "c", "scale": "minor"}, "prog": [None],
+         "tracks": [{"name": "Rev", "kind": "drum", "voice": {"name": "drum_cymbal_open", "rate": -1}, "steps": "X..."},
+                    {"name": "K", "kind": "drum", "voice": {"name": "bd_haus", "rate": 1}, "steps": "X..."}]}
+    code = g.generate(p)
+    assert "grid_voice :sample, :drum_cymbal_open, amp: 0.8, rate: -1" in code
+    assert "grid_voice :sample, :bd_haus, amp: 0.8\n" in code   # rate 1 は出さない
+
+
+def test_pitch_bend_note_is_kept_and_generated():
+    proj = {"bpm": 120, "bars": 2, "tracks": [
+        {"id": "ld", "name": "ld", "kind": "melody", "voice": {"name": "saw"}, "notes": [[0, "c5", 2, -12], [2, "c5", 2]]}]}
+    p = g.validate(proj)
+    assert p["tracks"][0]["notes"][0] == [0, "c5", 2, -12]
+    code = g.generate(proj)
+    assert "note_slide: g" in code and "control s, note: note(n) + bd" in code and "in_thread" in code
+
+
+def test_fx_automation_generates_control_loop_and_slices():
+    proj = {"bpm": 120, "bars": 4, "tracks": [
+        {"id": "a", "name": "a", "kind": "melody", "voice": {"name": "saw"}, "notes": [[0, "c4", 1]]},
+        {"id": "f", "name": "f", "kind": "fx", "voice": {"name": "lpf"}, "targets": ["a"],
+         "automation": {"param": "cutoff", "points": [[0, 50], [8, 130]]}}]}
+    code = g.generate(proj)
+    assert "cutoff: 50" in code and "cutoff_slide: d" in code and "|fx_f|" in code
+    part = g.slice_project(proj, start_cell=16)   # 4 拍目(1 拍 = 4 マス)から
+    assert part["tracks"][1]["automation"]["points"][0] == [0, 90]
+
+
+def test_glide_slides_into_the_next_note():
+    proj = {"bpm": 120, "bars": 2, "tracks": [
+        {"id": "ld", "name": "ld", "kind": "melody", "voice": {"name": "prophet", "glide": 0.5},
+         "notes": [[0, "c5", 2], [2, "g5", 2], [4, "g5", 1]]}]}
+    rows = g.bend_rows(g.validate(proj)["tracks"][0]["notes"], 0.5)
+    assert rows[0][3:] == [7, 1.5, 0.5]   # c5 → g5 (+7)、最後の 0.5 拍で滑る
+    assert rows[1][3] == 0 and rows[2][3] == 0   # 同じ音程の続き / 次がない音は滑らない
+
+
+def test_vocal_harmony_shifts_a_third_in_the_scale():
+    import vocal_harmony as vh
+    pcs = vh.scale_pcs("Bb minor")
+    assert vh.shift_semitones(70, pcs, 2) == 3   # bb → db(短3度上)
+    assert vh.shift_semitones(73, pcs, 2) == 4   # db → f(長3度上)
+    assert vh.shift_semitones(70, pcs, -2) == -4  # bb → gb(長3度下)
+
+
+def test_record_video_flag_end_time():
+    import record_video as rv
+    times = [i / 30 for i in range(10)]
+    counts = [0, 0, 80, 80, 80, 0, 0, 0, 0, 0]
+    assert abs(rv.flag_end_time(counts, times) - 5 / 30) < 1e-9     # 最後に合図が見えたフレーム(4)の次
+    with pytest.raises(ValueError):
+        rv.flag_end_time([0] * 10, times)                             # 合図が一度も見えない
+    with pytest.raises(ValueError):
+        rv.flag_end_time([80] * 10, times)                            # 合図が消えない
+
+
+def test_note_positions_keep_eighth_beat_resolution():
+    proj = {"bpm": 120, "bars": 1, "tracks": [
+        {"id": "p", "name": "p", "kind": "melody", "voice": {"name": "piano"}, "notes": [[2.125, "c5", 1.875]]}]}
+    assert g.validate(proj)["tracks"][0]["notes"][0] == [2.125, "c5", 1.875]

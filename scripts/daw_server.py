@@ -78,7 +78,7 @@ class Player:
         self.ready.clear()
 
     def status(self) -> dict:
-        return {"ready": self.ready.is_set(), "running": bool(self.proc and self.proc.poll() is None)}
+        return {"ready": self.ready.is_set(), "running": bool(self.proc and self.proc.poll() is None), "errors": self.errors[-8:]}
 
     def _send(self, text: str) -> None:
         assert self.proc and self.proc.stdin

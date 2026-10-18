@@ -30,7 +30,7 @@ input[type=range]{padding:0;accent-color:var(--acc)}
 .rl,.rr{height:26px;background:var(--panel);border-bottom:1px solid var(--line)}
 .rl{position:sticky;left:0;z-index:8;width:250px;flex:none;border-right:1px solid var(--line);display:flex;align-items:center;padding:0 8px;color:var(--dim)}
 .rr{display:flex}
-.bn{cursor:pointer;position:relative;overflow:hidden;white-space:nowrap;height:26px;border-left:1px solid var(--line);padding:2px 6px;color:var(--dim);font-size:11px;flex:none}
+.bn{cursor:pointer;position:relative;overflow:hidden;white-space:nowrap;height:26px;border-right:2px solid #5b6479;padding:2px 6px;color:var(--dim);font-size:11px;flex:none}
 .hd{position:sticky;left:0;z-index:8;width:250px;flex:none;background:var(--panel);border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:5px 8px;height:64px;display:flex;flex-direction:column;gap:3px;cursor:pointer}
 .hd.sel{background:var(--panel3);box-shadow:inset 3px 0 0 var(--acc)}
 .hd .r1,.hd .r2{display:flex;gap:5px;align-items:center}
@@ -72,6 +72,9 @@ input[type=range]{padding:0;accent-color:var(--acc)}
 .selbar{position:absolute;top:0;bottom:0;background:#ff6b9d26;border:1px solid #ff6b9d99;border-top:0;border-bottom:0;pointer-events:none;z-index:3}
 .addrow{padding:10px;position:sticky;left:0;z-index:8;width:max-content;max-width:100vw;display:flex;gap:6px;flex-wrap:wrap;align-items:center;color:var(--dim)}
 /* bottom */
+/* 全画面モード: 下のパネル(エディタ・ライブラリ・コード)を隠して、トラックを広く見せる */
+body.fs #bot,body.fs #split{display:none}
+#fs.on{background:var(--acc);color:#fff}
 #split{height:7px;flex:none;cursor:row-resize;background:var(--line);position:relative;z-index:9}
 #split:hover,#split.drag{background:var(--acc)}
 #bot{height:330px;display:flex;flex-direction:column;background:var(--panel);border-top:2px solid var(--line);flex:none}
@@ -126,6 +129,7 @@ pre{margin:0;padding:10px;overflow:auto;font-size:11px;color:#c9d1e0;flex:1;whit
   <label><input id="loop" type="checkbox" checked> ループ</label>
   <button id="lrange" hidden title="ループ範囲を解除(⇧+クリックで小節を 2 つ選ぶと範囲になります)"></button>
   <label>スナップ <select id="snap"><option value="4">1拍</option><option value="2">1/2拍</option><option value="1" selected>1/4拍</option></select></label>
+  <label>並び <button id="sortasc" title="ドラム → ベース → コード → メロディ → エフェクトの順に固定して、名前の昇順に並べ替える">▲ 昇順</button><button id="sortdesc" title="ドラム → ベース → コード → メロディ → エフェクトの順に固定して、名前の降順に並べ替える">▼ 降順</button></label>
   <label>幅 <button id="zout" title="縮小(Ctrl+ホイールでも)">－</button><button id="zin" title="拡大(Ctrl+ホイールでも)">＋</button></label>
   <span class="sep"></span>
   <label>曲 <select id="proj"></select></label>
@@ -133,6 +137,7 @@ pre{margin:0;padding:10px;overflow:auto;font-size:11px;color:#c9d1e0;flex:1;whit
   <label>プリセット <select id="preset"></select></label>
   <button id="psave" title="いまの曲を、トラックの音色・パターン・コード進行ごと保存">💾 プリセット保存</button>
   <span class="sep"></span>
+  <button id="fs" title="全画面モード(F): 下のタブを隠して、トラックを広く見せる">⛶</button>
   <button id="help" title="ショートカット一覧">？</button>
 </div>
 <div id="arr"><div id="tl"></div><div id="ph"></div></div>
@@ -155,6 +160,9 @@ const SCALES = { major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10] };
 const CELLS_PER_BEAT = 4;
 let knownVersion = null, pendingSave = false, cat = null, P = null, selId = null, tab = 'edit', saveT = null, counter = 1;
 const chordName = c => c ? PCN[c[0]] + SUF[c[1]] : '';   // null = コードなし(空の小節)
+const RECQ = new URLSearchParams(location.search);   // ?rec=1&project=名前&bar=開始小節&bars=小節数: 録画用。自動で再生を始める(record_video.py が使う)
+let REC_FLAG = null;   // 録画の合図: 再生が始まる瞬間まで左上に出る白い四角。この四角が消えたフレームを、音の頭に合わせる
+const MAX_BARS = 128;   // daw_codegen.MAX_BARS と同じ
 const cellsBar = () => CELLS_PER_BEAT * P.meter;
 const totalCells = () => P.bars * cellsBar();
 
@@ -216,6 +224,17 @@ function moveTrack(from, to) {
   const a = P.tracks.findIndex(x => x.id === from), b = P.tracks.findIndex(x => x.id === to); if (a < 0 || b < 0) return;
   const [t] = P.tracks.splice(a, 1); P.tracks.splice(b, 0, t); lastEdit = 0; dirty(); render();
 }
+/* トラックの並べ替え: まずグループの順(ドラム → ベース → コード → メロディ → エフェクト)に固定し、そのなかで名前順(dir = 1 昇順 / -1 降順)。
+   注意: エフェクトは並び順で掛かる順番が変わる(先頭が最初に音を受ける)ので、エフェクト同士を並べ替えると音が変わることがある */
+const GROUP_ORDER = ['drum', 'bass', 'chord', 'melody', 'fx'];
+function sortTracks(dir) {
+  const gi = t => { const i = GROUP_ORDER.indexOf(t.kind); return i < 0 ? GROUP_ORDER.length : i; };
+  const sorted = [...P.tracks].sort((a, b) => gi(a) - gi(b) || dir * String(a.name).localeCompare(String(b.name), 'ja', { numeric: true }));
+  if (sorted.every((t, k) => t === P.tracks[k])) { say(dir > 0 ? 'すでに昇順です' : 'すでに降順です'); return; }
+  const fxMoved = P.tracks.filter(t => t.kind === 'fx').some((t, k) => t !== sorted.filter(x => x.kind === 'fx')[k]);
+  P.tracks = sorted; lastEdit = 0; dirty(); render();
+  say(`ドラム → ベース → コード → メロディ → エフェクトの順に固定して、名前の${dir > 0 ? '昇順' : '降順'}に並べ替えました(⌘Z で戻せます)` + (fxMoved ? '。エフェクトの順番が変わったので、音が変わる場合があります' : ''), fxMoved);
+}
 function setBars(n) { fitBars(n); lastEdit = 0; dirty(); render(); renderBottom(); }
 function fitBars(n) {
   const old = P.bars, cb = cellsBar(); P.bars = n;
@@ -247,7 +266,7 @@ async function save() { try { await api('/api/project', { project: P }); pending
 /* ---------- arrangement ---------- */
 function fitCw() {
   const w = $('#arr').clientWidth - 270, base = clamp(Math.floor(w / totalCells()), 12, 30);
-  document.documentElement.style.setProperty('--cw', clamp(base * zoom, 4, 90) + 'px'); RCW = clamp(Math.round(24 * zoom), 8, 96);
+  document.documentElement.style.setProperty('--cw', Math.round(clamp(base * zoom, 4, 90)) + 'px');   // 整数 px: 小数だと、コード進行のブロック(幅 = cw × 16)とセル 16 個の幅が内部の丸めで 1 小節ごとに少しずつずれ、右へ行くほど縦線がずれる RCW = clamp(Math.round(24 * zoom), 8, 96);
 }
 function setZoom(z) {
   const r = $('#roll'), keep = r ? [r.scrollTop, r.scrollLeft] : null;
@@ -298,7 +317,7 @@ function pasteBars() {
   if (!clip) { say('先に小節をコピーしてください(⌘+クリックで選択 → ⌘C)', 1); return; }
   if (!bsel.bars.size) { say('貼り付け先の小節を選んでください', 1); return; }
   const start = Math.min(...bsel.bars), n = clip.n, need = start + n;
-  if (need > 32) { say('小節は最大 32 までです', 1); return; }
+  if (need > MAX_BARS) { say(`小節は最大 ${MAX_BARS} までです`, 1); return; }
   const added = Math.max(need - P.bars, 0); if (added) fitBars(need);
   const cb = cellsBar(), m = P.meter;
   const put = (t, c) => {
@@ -327,7 +346,7 @@ function render() {
       ondblclick: () => markerEdit(b) }, String(b + 1), mk ? h('span', { class: 'mk' }, mk.name) : null));
   }
   const bb = (l, tip, dis, fn) => h('button', { title: tip, disabled: dis, onclick: fn }, l);
-  rr.append(h('div', { class: 'barctl' }, bb('＋', '小節を末尾に追加', P.bars >= 32, () => setBars(P.bars + 1)), bb('－', '末尾の小節を削除', P.bars <= 1, () => setBars(P.bars - 1))));
+  rr.append(h('div', { class: 'barctl' }, bb('＋', '小節を末尾に追加', P.bars >= MAX_BARS, () => setBars(P.bars + 1)), bb('－', '末尾の小節を削除', P.bars <= 1, () => setBars(P.bars - 1))));
   tl.append(h('div', { class: 'rrow' }, rl, rr));
   // chord lane
   const chd = h('div', { class: 'hd', style: 'cursor:default' }, h('div', { class: 'r1' }, h('span', { class: 'nm' }, 'コード進行')));
@@ -349,7 +368,9 @@ function render() {
     const del = h('button', { title: 'トラックを削除', onclick: ev => { ev.stopPropagation(); if (confirm(`「${t.name}」を削除しますか?`)) { P.tracks = P.tracks.filter(x => x !== t); selId = P.tracks[0]?.id; dirty(); render(); renderBottom(); } } }, '×');
     const m = h('button', { class: t.mute ? 'on' : '', disabled: !!off, title: 'ミュート(複数可)', onclick: ev => { ev.stopPropagation(); t.mute = !t.mute; dirty(); render(); } }, 'M');
     const s = h('button', { class: t.solo ? 'on' : '', disabled: !!off || fx, title: 'ソロ(1 つだけ)', onclick: ev => { ev.stopPropagation(); const v = !t.solo; P.tracks.forEach(x => x.solo = false); t.solo = v; dirty(); render(); } }, 'S');
-    const amp = fx ? h('input', { type: 'range', min: 0, max: 1, step: .05, value: t.voice.mix ?? 1, title: 'mix(エフェクトのかかり具合)' + (t.voice.mix ?? 1), disabled: t.voice.name === 'sidechain', onclick: ev => ev.stopPropagation(), oninput: ev => { t.voice.mix = +ev.target.value; ev.target.title = 'mix ' + t.voice.mix; dirty(); } })
+    const sc = fx && t.voice.name === 'sidechain';   // サイドチェインは mix を持たない。行のスライダーで「下げる深さ depth」を直接動かす
+    const amp = sc ? h('input', { type: 'range', min: 0, max: 1, step: .05, value: t.voice.params.depth, title: 'depth(下げる深さ)' + t.voice.params.depth, onclick: ev => ev.stopPropagation(), oninput: ev => { t.voice.params.depth = +ev.target.value; ev.target.title = 'depth(下げる深さ) ' + t.voice.params.depth; dirty(); } })
+      : fx ? h('input', { type: 'range', min: 0, max: 1, step: .05, value: t.voice.mix ?? 1, title: 'mix(エフェクトのかかり具合)' + (t.voice.mix ?? 1), onclick: ev => ev.stopPropagation(), oninput: ev => { t.voice.mix = +ev.target.value; ev.target.title = 'mix ' + t.voice.mix; dirty(); } })
       : h('input', { type: 'range', min: 0, max: 1.5, step: .05, value: t.voice.amp, title: 'amp ' + t.voice.amp, onclick: ev => ev.stopPropagation(), oninput: ev => { t.voice.amp = +ev.target.value; ev.target.title = 'amp ' + t.voice.amp; dirty(); } });
     hd.append(h('div', { class: 'r1' }, h('span', { class: 'grip', draggable: true, title: 'ドラッグで並べ替え', ondragstart: ev => { dragTid = t.id; ev.dataTransfer.setData('text/plain', t.id); }, ondragend: () => { dragTid = null; } }, '⋮⋮'), h('span', { class: 'kd', style: `background:${kc}` }, kn), nm, del),
       h('div', { class: 'r2' }, m, s, amp));
@@ -615,7 +636,7 @@ function rollEl(t) {
     const n = [c / CELLS_PER_BEAT, noteName(m), len / CELLS_PER_BEAT]; t.notes.push(n); Audio_.blip(m, t);
     drawNotes(); const els = layer.querySelectorAll('.nt'); drag(ev, n, 'resize', els[els.length - 1], true);
   };
-  curRoll = { t, changed, drawNotes, ensureBars: end => { const need = Math.ceil(end / P.meter - 1e-9); if (need > 32) return false; if (need > P.bars) fitBars(need); return true; } };
+  curRoll = { t, changed, drawNotes, ensureBars: end => { const need = Math.ceil(end / P.meter - 1e-9); if (need > MAX_BARS) return false; if (need > P.bars) fitBars(need); return true; } };
   drawNotes();
   inner.append(layer, h('div', { id: 'rph' }));
   wrap.append(inner);
@@ -804,23 +825,30 @@ const Audio_ = (() => {
       const r = await api('/api/play', { project: P, start_cell: from, end_cell: re, loop: $('#loop').checked });
       if (my !== token) { api('/api/stop', {}).catch(() => {}); return; }
       if (r.check) say(r.check, 1); else say('Sonic Pi で再生中');
-      seg = { from, len: re - from }; t0 = performance.now() + LEAD * 1000; playing = true; $('#play').textContent = '■'; $('#play').classList.add('on'); requestAnimationFrame(frame);
+      seg = { from, len: re - from }; t0 = performance.now() + LEAD * 1000; playing = true; if (RECQ.has('rec')) document.title = 'REC_PLAYING'; $('#play').textContent = '■'; $('#play').classList.add('on'); requestAnimationFrame(frame);
     } catch (e) { say(e.message, 1); $('#play').textContent = '▶'; } finally { $('#play').disabled = false; }
   }
   function seek(cell) { if (!playing) return; stop(); cursor = cell; start(); }
   function stop() {
-    token++; if (playing) api('/api/stop', {}).catch(() => {});
+    token++; if (playing) api('/api/stop', {}).catch(() => {}); if (RECQ.has('rec') && playing) document.title = 'REC_END';
     playing = false; $('#play').textContent = '▶'; $('#play').classList.remove('on'); say(''); setPlayhead(cursor);
   }
   function frame() {
     if (!playing) return;
+    if (REC_FLAG && performance.now() >= t0) { REC_FLAG.remove(); REC_FLAG = null; }
     const cells = Math.max(0, (performance.now() - t0) / 1000) / stepSec();
     if (cells >= seg.len && !$('#loop').checked) { stop(); return; }
-    setPlayhead(seg.from + cells % seg.len); requestAnimationFrame(frame);
+    const pos = seg.from + cells % seg.len; setPlayhead(pos); follow(pos); requestAnimationFrame(frame);
   }
   return { start, stop, seek, hit, chordBlip, blip: (m, t) => { init(); ac.resume(); tone(t, m, ac.currentTime, .25, (t.voice.amp) * .25); },
     audition: async t => { if (t.kind === 'fx') { say('エフェクトは単独では鳴りません。▶ で曲を鳴らして確かめます'); return; } init(); ac.resume(); if (t.kind === 'drum') await loadSample(t.voice.name); const w = ac.currentTime + .02; if (t.kind === 'drum') drum(t.voice.name, w, t.voice.amp, t.voice.pan, 2); else tone(t, t.kind === 'bass' ? 36 : 64, w, .6, t.voice.amp * .3); } };
 })();
+// 再生中は、縦線を画面の同じ位置に置いたまま、トラック(とピアノロール)を左へ流す。横幅が狭くても先を見られる
+function follow(cell) {
+  const arr = $('#arr'), roll = $('#roll'), lead = 60;
+  if (arr) arr.scrollLeft = Math.max(0, cell * cw() - lead);
+  if (roll) roll.scrollLeft = Math.max(0, cell * RCW - lead);
+}
 function setPlayhead(cell) {
   const ph = $('#ph'); ph.style.display = 'block'; ph.style.height = $('#tl').offsetHeight + 'px'; ph.style.left = (250 + cell * cw()) + 'px';
   const r = $('#rph'); if (r) { r.style.display = 'block'; r.style.left = (48 + cell * RCW) + 'px'; }
@@ -829,6 +857,12 @@ function setPlayhead(cell) {
 
 /* ---------- toolbar ---------- */
 $('#play').onclick = () => playing ? Audio_.stop() : Audio_.start();
+const setFs = on => { document.body.classList.toggle('fs', on); $('#fs').classList.toggle('on', on); if (typeof P !== 'undefined' && P) setPlayhead(cursor); };
+$('#sortasc').onclick = () => sortTracks(1);
+$('#sortdesc').onclick = () => sortTracks(-1);
+$('#fs').onclick = () => setFs(!document.body.classList.contains('fs'));
+document.addEventListener('keydown', e => { if (e.key.toLowerCase() === 'f' && !e.metaKey && !e.ctrlKey && !e.altKey && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName || '')) setFs(!document.body.classList.contains('fs')); });
+if (RECQ.has('rec') || RECQ.has('fs')) setFs(true);   // 録画(?rec=1)と ?fs=1 は、全画面モードで開く
 /* ピアノロールのキー操作: ⌘A 全選択 / Delete 削除 / 矢印 移動 / ⌘D 複製 / ⌘C ⌘V コピー・貼り付け(再生位置へ) */
 function rollKeys(e) {
   if (!curRoll || tab !== 'edit' || sel() !== curRoll.t || !$('#roll')) return false;
@@ -838,7 +872,7 @@ function rollKeys(e) {
   const picked = t.notes.filter(n => nsel.has(n));
   if (mod && key === 'v' && lastCopy === 'notes' && noteClip) {
     const base = cursor / CELLS_PER_BEAT, end = base + Math.max(...noteClip.map(n => n[0] + n[2]));
-    if (!R.ensureBars(end)) { say('小節は最大 32 までです', 1); return done(); }
+    if (!R.ensureBars(end)) { say(`小節は最大 ${MAX_BARS} までです`, 1); return done(); }
     const add = noteClip.map(n => [base + n[0], n[1], Math.min(n[2], P.bars * P.meter - base - n[0])]).filter(n => n[2] >= .25);
     t.notes.push(...add); t.notes.sort((a, b) => a[0] - b[0]); nsel = new Set(add); R.changed(); renderBottom(); say(`${add.length} 個の音を貼り付けました`); return done();
   }
@@ -847,7 +881,7 @@ function rollKeys(e) {
   if (mod && key === 'c') { const b0 = Math.min(...picked.map(n => n[0])); noteClip = picked.map(n => [n[0] - b0, n[1], n[2]]); lastCopy = 'notes'; say(`${picked.length} 個の音をコピーしました(再生位置へ ⌘V)`); return done(); }
   if (mod && key === 'd') {
     const b0 = Math.min(...picked.map(n => n[0])), b1 = Math.max(...picked.map(n => n[0] + n[2])), span = b1 - b0;
-    if (!R.ensureBars(b1 + span)) { say('小節は最大 32 までです', 1); return done(); }
+    if (!R.ensureBars(b1 + span)) { say(`小節は最大 ${MAX_BARS} までです`, 1); return done(); }
     const add = picked.map(n => [n[0] + span, n[1], Math.min(n[2], P.bars * P.meter - n[0] - span)]).filter(n => n[2] >= .25);
     t.notes.push(...add); t.notes.sort((a, b) => a[0] - b[0]); nsel = new Set(add); R.changed(); renderBottom(); return done();
   }
@@ -900,7 +934,7 @@ $('#arr').addEventListener('wheel', ev => { if (!ev.ctrlKey) return; ev.preventD
 $('#snap').onchange = e => { snapC = +e.target.value; };
 $('#lrange').onclick = () => { loopR = null; loopPend = null; loopUi(); render(); };
 $('#help').onclick = () => {
-  const rows = [['Space', '再生 / 停止'], ['⌘Z / ⌘⇧Z・⌘Y', '元に戻す / やり直す'], ['⌘+クリック(小節)', '小節を複数選択(ルーラー = 全トラック、行 = そのトラック)'], ['⌘C / ⌘V', '小節(音を選んでいるときは音)をコピー / 貼り付け'], ['Esc', '選択を解除'],
+  const rows = [['Space', '再生 / 停止'], ['F', '全画面モード(下のタブを隠す)'], ['⌘Z / ⌘⇧Z・⌘Y', '元に戻す / やり直す'], ['⌘+クリック(小節)', '小節を複数選択(ルーラー = 全トラック、行 = そのトラック)'], ['⌘C / ⌘V', '小節(音を選んでいるときは音)をコピー / 貼り付け'], ['Esc', '選択を解除'],
     ['ルーラーをクリック', '小節を選んで再生位置を移動'], ['⇧+クリック 2 回', 'ループ範囲(上の「範囲 … ×」で解除)'], ['ダブルクリック(ルーラー)', 'セクション名'], ['Ctrl+ホイール', '横方向のズーム'],
     ['ピアノロール: ⇧+クリック / ⇧+ドラッグ', '音を選択に追加 / 範囲選択'], ['ピアノロール: ⌘A', 'このトラックの音をすべて選択'], ['ピアノロール: ⌘D', '選んだ音を、すぐ後ろに複製'], ['ピアノロール: ← → ↑ ↓', '選んだ音を移動(⇧+↑↓ でオクターブ)'], ['ピアノロール: Delete', '選んだ音を削除']];
   const ov = h('div', { class: 'ov', onpointerdown: ev => { if (ev.target === ov) ov.remove(); } }, h('div', { class: 'ovp', style: 'max-width:640px;display:block' }, h('h2', {}, 'ショートカット'), h('div', { class: 'kbd' }, ...rows.flatMap(([k, d]) => [h('b', {}, k), h('span', {}, d)])), h('div', { style: 'margin-top:12px' }, h('button', { onclick: () => ov.remove() }, '閉じる'))));
@@ -921,9 +955,18 @@ async function pollVersion() {
   cat = await api('/api/catalog'); await loadStems(); await loadPresets(); fillPresets();
   cat.roots.forEach(r => $('#kroot').append(new Option(PCN[r], r)));
   const { projects } = await api('/api/projects');
-  if (projects.length) await loadProject(projects[0]); else { starter(); await loadList(); render(); renderBottom(); dirty(); }
+  const recName = RECQ.has('rec') && projects.includes(RECQ.get('project')) ? RECQ.get('project') : projects[0];
+  if (projects.length) await loadProject(recName); else { starter(); await loadList(); render(); renderBottom(); dirty(); }
   try { const sv = JSON.parse(sessionStorage.getItem('daw_sel') || 'null'); sessionStorage.removeItem('daw_sel'); if (sv) { if (P.tracks.some(t => t.id === sv.sel)) selId = sv.sel; if (sv.tab) tab = sv.tab; render(); renderBottom(); } } catch (e) { /* 無視 */ }
-  pollVersion();
+  if (!RECQ.has('rec')) pollVersion();   // 録画中は、自動リロードしない
+  else {
+    REC_FLAG = Object.assign(document.createElement('div'), { id: 'recflag' });
+    REC_FLAG.style.cssText = 'position:fixed;left:0;top:0;width:8px;height:8px;background:#ff00ff;z-index:99999';
+    document.body.append(REC_FLAG);
+    const bar = Math.max(0, +RECQ.get('bar') || 0), bars = Math.max(1, +RECQ.get('bars') || P.bars - bar);
+    loopR = { a: bar, b: Math.min(P.bars - 1, bar + bars - 1) }; cursor = bar * cellsBar(); $('#loop').checked = false; loopUi(); render();
+    setTimeout(() => Audio_.start(), 800);
+  }
 })();
 </script>
 </body>
