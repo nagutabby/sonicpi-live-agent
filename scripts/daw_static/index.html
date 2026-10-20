@@ -163,7 +163,7 @@ pre{margin:0;padding:10px;overflow:auto;font-size:11px;color:#c9d1e0;flex:1;whit
 const $ = s => document.querySelector(s);
 const h = (tag, props = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(props)) { if (k === 'class') e.className = v; else if (k === 'style') e.style.cssText = v; else if (k.startsWith('on')) e[k] = v; else e[k] = v; } e.append(...kids.filter(x => x != null)); return e; };
 const ampOf = (t, vel) => (t.voice.amp ?? 1) * vel / 60;   // 最終の amp = トラックの amp × ベロシティ ÷ 60(既定が 60。daw_codegen.note_amp と同じ)
-const VEL_STEP = 20, VEL_MIN = 20, VEL_MAX = 120;   // ベロシティは 20 刻み(20 40 60 80 100 120)
+const VEL_STEP = 10, VEL_MIN = 10, VEL_MAX = 120;   // ベロシティは 10 刻み(10 20 … 120)
 const quantVel = v => clamp(Math.round(v / VEL_STEP) * VEL_STEP, VEL_MIN, VEL_MAX);
 let lastVel = 60;   // 新しく置く音のベロシティ(最後に編集した値。画面だけの状態で、保存しない)
 const velOpacity = vel => .3 + .7 * vel / 120;
@@ -389,7 +389,7 @@ function render() {
     const sc = fx && t.voice.name === 'sidechain';   // サイドチェインは mix を持たない。行のスライダーで「下げる深さ depth」を直接動かす
     const amp = sc ? h('input', { type: 'range', min: 0, max: 1, step: .05, value: t.voice.params.depth, title: 'depth(下げる深さ)' + t.voice.params.depth, onclick: ev => ev.stopPropagation(), oninput: ev => { t.voice.params.depth = +ev.target.value; ev.target.title = 'depth(下げる深さ) ' + t.voice.params.depth; dirty(); } })
       : fx ? h('input', { type: 'range', min: 0, max: 1, step: .05, value: t.voice.mix ?? 1, title: 'mix(エフェクトのかかり具合)' + (t.voice.mix ?? 1), onclick: ev => ev.stopPropagation(), oninput: ev => { t.voice.mix = +ev.target.value; ev.target.title = 'mix ' + t.voice.mix; dirty(); } })
-      : h('input', { type: 'range', min: 0, max: 4, step: .05, value: t.voice.amp ?? 1, title: 'amp(トラックの音量)' + (t.voice.amp ?? 1) + '。音ごとの強さは、下のベロシティ編集欄', onclick: ev => ev.stopPropagation(), oninput: ev => { t.voice.amp = +ev.target.value; ev.target.title = 'amp(トラックの音量) ' + t.voice.amp; dirty(); } });
+      : h('input', { type: 'range', min: 0, max: 32, step: .05, value: t.voice.amp ?? 1, title: 'amp(トラックの音量)' + (t.voice.amp ?? 1) + '。音ごとの強さは、下のベロシティ編集欄', onclick: ev => ev.stopPropagation(), oninput: ev => { t.voice.amp = +ev.target.value; ev.target.title = 'amp(トラックの音量) ' + t.voice.amp; dirty(); } });
     hd.append(h('div', { class: 'r1' }, h('span', { class: 'grip', draggable: true, title: 'ドラッグで並べ替え', ondragstart: ev => { dragTid = t.id; ev.dataTransfer.setData('text/plain', t.id); }, ondragend: () => { dragTid = null; } }, '⋮⋮'), h('span', { class: 'kd', style: `background:${kc}` }, kn), nm, del),
       h('div', { class: 'r2' }, m, s, amp));
     hd.title = (fx ? `${t.voice.name} → ` + (t.targets.length ? t.targets.map(i => (P.tracks.find(x => x.id === i) || {}).name).filter(Boolean).join('、') : '全トラック') : t.voice.name);
@@ -532,7 +532,7 @@ function velLane(t) {
       });
     }
   };
-  const velAt = ev => quantVel((PAD + UH - (ev.clientY - inner.getBoundingClientRect().top)) / UH * VEL_MAX);   // 20 刻みに丸める
+  const velAt = ev => quantVel((PAD + UH - (ev.clientY - inner.getBoundingClientRect().top)) / UH * VEL_MAX);   // 10 刻みに丸める
   const pick = ev => { const x = ev.clientX - bars.getBoundingClientRect().left; return hit.find(o => x >= o.x0 && x < o.x1); };
   let painting = false;
   const apply = ev => {
@@ -620,7 +620,7 @@ function settings(t) {
   const snd = soundPicker(t.kind, t.voice.name, n => { t.voice.name = n; dirty(); render(); }, n => Audio_.audition({ ...t, voice: { ...t.voice, name: n } }));
   el.append(h('b', {}, t.name), colorInput(t), h('label', {}, '音色', snd));
   const sl = (label, key, min, max, step, tgt = t.voice) => { const v = h('span', {}, String(tgt[key])); const r = h('input', { type: 'range', min, max, step, value: tgt[key], oninput: () => { tgt[key] = +r.value; v.textContent = r.value; dirty(); } }); el.append(h('label', {}, label, r, v)); };
-  sl('音量 amp', 'amp', 0, 4, .05); sl('定位 pan', 'pan', -1, 1, .1);
+  sl('音量 amp', 'amp', 0, 32, .05); sl('定位 pan', 'pan', -1, 1, .1);
   if (t.kind !== 'drum') sl('明るさ cutoff', 'cutoff', 20, 130, 1);
   if (t.kind !== 'drum') { const e = h('select', {}); ['pluck', 'stab', 'pad', 'swell'].forEach(x => e.append(new Option(({ pluck: 'pluck(短く)', stab: 'stab(ふつう)', pad: 'pad(ゆっくり)', swell: 'swell(膨らむ)' })[x], x))); e.value = t.voice.env; e.onchange = () => { t.voice.env = e.value; dirty(); }; el.append(h('label', {}, '音の形', e)); }
   return el;
@@ -653,7 +653,29 @@ function rollEl(t) {
   nsel = new Set([...nsel].filter(n => t.notes.includes(n)));
   const total = () => P.bars * P.meter, sn = c => Math.floor(c / snapC) * snapC;
   const place = (e, n) => { e.style.left = n[0] * CELLS_PER_BEAT * RCW + 'px'; e.style.top = (HI - midi(n[1])) * RH + 'px'; e.style.width = n[2] * CELLS_PER_BEAT * RCW - 1 + 'px'; };
-  const drawNotes = () => { layer.textContent = ''; for (const n of t.notes) layer.append(noteEl(n)); if (curVel) curVel.draw(); };
+  // グライド(voice.glide)とベンド(音の 5 番目の値)の線: 音の高さが動く区間を、斜めの線で見せる(daw_codegen.bend_rows と同じ規則)
+  const glideSvg = () => {
+    const glide = t.voice.name === 'piano' ? 0 : (t.voice.glide || 0), W = tc * RCW, H = (HI - LO + 1) * RH, cy = m => (HI - m) * RH + RH / 2, px = b => b * CELLS_PER_BEAT * RCW;
+    const lines = [];   // [x0, y0, x1, y1]
+    for (const n of t.notes) {
+      if (n.length > 4 && n[4]) { lines.push([px(n[0]), cy(midi(n[1])), px(n[0] + n[2]), cy(midi(n[1]) + n[4])]); continue; }
+      if (!glide) continue;
+      const nxt = t.notes.filter(m => m !== n && Math.abs(m[0] - (n[0] + n[2])) < 0.01);
+      if (!nxt.length) continue;
+      const d = nxt.map(m => midi(m[1]) - midi(n[1])).reduce((a, b) => Math.abs(b) < Math.abs(a) ? b : a);
+      if (d !== 0 && Math.abs(d) <= 7) lines.push([px(n[0] + n[2] - Math.min(glide, n[2])), cy(midi(n[1])), px(n[0] + n[2]), cy(midi(n[1]) + d)]);
+    }
+    if (!lines.length) return null;
+    const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('width', W); svg.setAttribute('height', H); svg.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none';
+    for (const [x0, y0, x1, y1] of lines) {
+      const l = document.createElementNS(NS, 'line');
+      for (const [k, v] of Object.entries({ x1: x0, y1: y0, x2: x1, y2: y1, stroke: '#ffffff', 'stroke-width': 2.5, 'stroke-linecap': 'round', opacity: .9 })) l.setAttribute(k, v);
+      const tt = document.createElementNS(NS, 'title'); tt.textContent = 'グライド / ベンド(音程が滑る)'; l.append(tt); svg.append(l);
+    }
+    return svg;
+  };
+  const drawNotes = () => { layer.textContent = ''; for (const n of t.notes) layer.append(noteEl(n)); const gs = glideSvg(); if (gs) layer.append(gs); if (curVel) curVel.draw(); };
   const changed = () => { dirty(); drawNotes(); render(); };
   const noteEl = n => {
     const e = h('div', { class: 'nt' + (nsel.has(n) ? ' sel' : ''), style: `background:${kc};opacity:${velOpacity(n[3])}`, title: 'velocity ' + n[3] + '(ホイールで変更。選択中の音はまとめて)' }); place(e, n);
@@ -765,7 +787,7 @@ function stemEditor(st) {
     const snd = soundPicker(e.kind, e.voice.name, n => { e.voice.name = n; sync(); }, n => Audio_.audition({ kind: e.kind, voice: { pan: 0, cutoff: 100, env: 'stab', ...e.voice, name: n } }));
     fm.append(h('label', {}, '名前', nm), h('label', {}, '説明', ds), h('label', {}, '種類', kd), h('label', {}, '音色', snd));
     const sl = (label, key, min, max, step) => { const v = h('span', { style: 'width:34px;text-align:right' }, String(e.voice[key])); const r = h('input', { type: 'range', min, max, step, value: e.voice[key], style: 'width:150px', oninput: () => { e.voice[key] = +r.value; v.textContent = r.value; sync(); } }); fm.append(h('label', {}, label, h('span', {}, r, v))); };
-    sl('音量 amp', 'amp', 0, 4, .05); sl('定位 pan', 'pan', -1, 1, .1);
+    sl('音量 amp', 'amp', 0, 32, .05); sl('定位 pan', 'pan', -1, 1, .1);
     if (e.kind !== 'drum') {
       sl('明るさ cutoff', 'cutoff', 20, 130, 1);
       const en = h('select', {}); [['pluck', 'pluck(短く)'], ['stab', 'stab(ふつう)'], ['pad', 'pad(ゆっくり)'], ['swell', 'swell(膨らむ)']].forEach(([k, l]) => en.append(new Option(l, k))); en.value = e.voice.env || 'stab';

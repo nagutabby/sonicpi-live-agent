@@ -38,13 +38,13 @@ FX_INFO = {
     "vowel": ("フォルマント(母音)", "声の母音の響き(フォルマント)を作り、声らしくする", 1, {"vowel_sound": ("母音(1あ 2え 3い 4お 5う)", 1, 5, 4), "voice": ("声の種類(0〜4 高い→低い)", 0, 4, 4)}),
     "sidechain": ("サイドチェイン", "グリッドの X の位置で対象の音量を下げ、すぐ戻す。キックに合わせて他の音が息をする", 1, {"depth": ("下げる深さ", 0, 1, 0.8), "release": ("戻る時間(拍)", 0.05, 1.5, 0.4)}),
 }
-AMP_MAX = 4.0       # トラックの amp(音量)の最大。ノートごとのベロシティと掛け合わせる
+AMP_MAX = 32.0      # トラックの amp(音量)の最大。ノートごとのベロシティと掛け合わせる
 VEL_DEFAULT = 60    # ベロシティの既定。ノート・hits では、この値のときは省略できる。最終の音量 = amp × ベロシティ ÷ 60(既定の 60 のとき amp そのまま)
-VEL_STEP, VEL_MIN, VEL_MAX = 20, 20, 120   # ベロシティは 20 刻み: 20 40 60 80 100 120(近い値に丸める)
+VEL_STEP, VEL_MIN, VEL_MAX = 10, 10, 120   # ベロシティは 10 刻み: 10 20 … 120(近い値に丸める)
 
 
 def quant_vel(x) -> int:
-    """ベロシティを 20 刻み(20〜120)の近い値に丸める。"""
+    """ベロシティを 10 刻み(10〜120)の近い値に丸める。"""
     return int(min(max(num(x, 0, 127, VEL_DEFAULT) / VEL_STEP + 0.5, VEL_MIN / VEL_STEP), VEL_MAX / VEL_STEP)) * VEL_STEP
 
 
@@ -326,7 +326,16 @@ def validate(project: dict) -> dict:
         if kind != "drum":
             voice["cutoff"] = int(num(v.get("cutoff"), 20, 130, 100))
             voice["env"] = v.get("env") if v.get("env") in ENVS else "stab"
-            if num(v.get("glide"), 0, 2, 0) > 0 and name in pool:   # グライド(ポルタメント): 次の音に続くとき、音の最後の glide 拍で次の音程へ滑る
+            if v.get("skip") is not None and num(v.get("skip"), 0, 8, 0) > 0:   # wav 楽器: 元の音の頭を飛ばす秒数(ゆっくり立ち上がる音源の、途中から鳴らす)
+                voice["skip"] = round(num(v.get("skip"), 0, 8, 0), 2)
+            if num(v.get("vibrato"), 0, 2, 0) > 0:   # wav 楽器: ビブラート(音程の周期的な揺れ)。幅(半音)・速さ(Hz)・かかり始めるまでの拍
+                voice["vibrato"] = round(num(v.get("vibrato"), 0, 2, 0), 2)
+                voice["vibrato_rate"] = round(num(v.get("vibrato_rate"), 1, 12, 5.5), 2)
+                voice["vibrato_delay"] = round(num(v.get("vibrato_delay"), 0, 4, 0.25), 2)
+            for key, hi in (("attack", 2), ("release", 4)):   # env の attack / release(拍)を個別に上書きする(省略すると env の値)
+                if v.get(key) is not None:
+                    voice[key] = round(num(v.get(key), 0, hi, ENV_BEATS[voice["env"]][0 if key == "attack" else 1]), 3)
+            if num(v.get("glide"), 0, 2, 0) > 0 and (name in pool or sample_pitches(name)):   # グライド(ポルタメント): 次の音に続くとき、音の最後の glide 拍で次の音程へ滑る
                 voice["glide"] = round(num(v.get("glide"), 0, 2, 0), 2)
             if name.startswith("mod_"):   # mod_* は音程を周期的に揺らせる。ビブラート = 小さい mod_range をゆっくり揺らす
                 voice["mod_range"] = round(num(v.get("mod_range"), 0, 12, 0.4), 2)    # 揺れの幅(半音)
@@ -501,6 +510,12 @@ def fmt_pattern(steps: str, res: int, meter: int) -> str:
 ENV_BEATS = {"pluck": (0, 0.03), "stab": (0.01, 0.15), "pad": (0.4, 1.0), "swell": (0.4, 0.03)}  # attack, release(拍)
 
 
+def env_beats(voice: dict) -> tuple[float, float]:
+    """(attack, release)(拍)。voice に attack / release があれば env の値より優先する。"""
+    att, rel = ENV_BEATS[voice["env"]]
+    return voice.get("attack", att), voice.get("release", rel)
+
+
 PIANO_AMP = 0.2   # :piano は他のシンセよりかなり大きく鳴るので、amp に掛けて揃える(目安。録音で確かめる)
 
 
@@ -519,7 +534,7 @@ def opts_str(voice: dict, kind: str) -> str:
     if voice.get("rate"):
         parts.append(f"rate: {voice['rate']:g}")
     if kind != "drum":
-        att, rel = ENV_BEATS[voice["env"]]
+        att, rel = env_beats(voice)
         parts += [f"cutoff: {voice['cutoff']}", f"attack: {att:g}", f"release: {rel:g}"]
         if "mod_range" in voice:
             parts += [f"mod_range: {voice['mod_range']:g}", f"mod_phase: {voice['mod_phase']:g}", "mod_wave: 3"]   # 3 = サイン波
@@ -528,10 +543,13 @@ def opts_str(voice: dict, kind: str) -> str:
 
 def sample_opts(voice: dict) -> str:
     """音程つきサンプル楽器の sample のオプション。env は attack / release(拍)、sustain は音の長さ l。"""
-    att, rel = ENV_BEATS[voice["env"]]
+    att, rel = env_beats(voice)
     parts = [f"amp: {amp_expr(voice)}"]
     if voice.get("pan"):
         parts.append(f"pan: {voice['pan']:g}")
+    if voice.get("skip"):
+        # start は 0〜1 の割合。秒を、その wav の長さ(秒)で割る。sample_duration は BPM で割った値(拍)を返すので、60 / BPM を掛けて秒に戻す
+        parts.append(f"start: {voice['skip']:g} / (sample_duration(f) * 60.0 / current_bpm)")
     return ", ".join(parts + [f"cutoff: {voice['cutoff']}", f"attack: {att:g}", f"release: {rel:g}"])
 
 
@@ -587,12 +605,35 @@ def generate(project: dict) -> str:
         elif sample_pitches(v["name"]):   # 音名つき wav: いちばん近い音の wav を rate で音程をずらして鳴らす
             table = ", ".join(f"[{m}, {json.dumps(path)}]" for m, path in sample_pitches(v["name"]))
             out.append(f"smp_{i} = [{table}]   # [MIDI 番号, wav]")
-            notes = ", ".join(f"[{n[0]:g}, {pitch_sym(n[1])}, {n[2]:g}, {n[3]}]" for n in t["notes"])
-            out.append(f"notes_{i} = [{notes}]   # [拍の位置, 音名, 長さ(拍), ベロシティ]")
-            loops[i] = [f"live_loop :{i} do", "  t = 0", f"  notes_{i}.each do |b, n, l, vel|", "    sleep b - t",
-                        f"    m, f = smp_{i}.min_by {{ |k, _| (k - note(n)).abs }}",
-                        f"    sample f, rate: 2**((note(n) - m) / 12.0), {sample_opts(v)}, sustain: l",
-                        "    t = b", "  end", f"  sleep {total} - t", "end"]
+            rows = bend_rows(t["notes"], v.get("glide", 0))
+            if v.get("vibrato"):   # ビブラート(+グライド): 音の間じゅう、細かい刻みで rate を動かす(0.05 拍ごとに control)
+                rows = rows or [[n[0], n[1], n[2], n[3], 0, 0, 0.25] for n in t["notes"]]
+                notes = ", ".join(f"[{r[0]:g}, {pitch_sym(r[1])}, {r[2]:g}, {r[3]}, {r[4]:g}, {r[5]:g}, {r[6]:g}]" for r in rows)
+                out.append(f"notes_{i} = [{notes}]   # [拍の位置, 音名, 長さ(拍), ベロシティ, ピッチベンド(半音), 滑り始めまでの拍, 滑る拍数]")
+                vd, vr, vl = v["vibrato"], v["vibrato_rate"], v["vibrato_delay"]
+                loops[i] = [f"live_loop :{i} do", "  t = 0", f"  notes_{i}.each do |b, n, l, vel, bd, gs, g|", "    sleep b - t",
+                            f"    m, f = smp_{i}.min_by {{ |k, _| (k - note(n)).abs }}",
+                            f"    s = sample f, rate: 2**((note(n) - m) / 12.0), {sample_opts(v)}, sustain: l * 60.0 / current_bpm, rate_slide: 0.05",
+                            "    in_thread do", "      k = 0.0", "      while k < l",
+                            "        sg = (bd != 0 && k >= gs) ? bd * [(k - gs) / g, 1.0].min : 0.0",
+                            f"        vb = {vd:g} * [[(k - {vl:g}) / 0.5, 0.0].max, 1.0].min * Math.sin(2 * Math::PI * {vr:g} * k * 60.0 / current_bpm)   # 幅 {vd:g} 半音・{vr:g} Hz。かかり始めは {vl:g} 拍後から 0.5 拍かけて深くなる",
+                            "        control s, rate: 2**((note(n) + sg + vb - m) / 12.0)", "        sleep 0.05", "        k += 0.05", "      end", "    end",
+                            "    t = b", "  end", f"  sleep {total} - t", "end"]
+            elif rows is not None:   # グライド・ベンド: sample の rate を、滑り始める拍で次の音程へ動かす(rate_slide)
+                notes = ", ".join(f"[{r[0]:g}, {pitch_sym(r[1])}, {r[2]:g}, {r[3]}, {r[4]:g}, {r[5]:g}, {r[6]:g}]" for r in rows)
+                out.append(f"notes_{i} = [{notes}]   # [拍の位置, 音名, 長さ(拍), ベロシティ, ピッチベンド(半音), 滑り始めまでの拍, 滑る拍数]")
+                loops[i] = [f"live_loop :{i} do", "  t = 0", f"  notes_{i}.each do |b, n, l, vel, bd, gs, g|", "    sleep b - t",
+                            f"    m, f = smp_{i}.min_by {{ |k, _| (k - note(n)).abs }}",
+                            f"    s = sample f, rate: 2**((note(n) - m) / 12.0), {sample_opts(v)}, sustain: l * 60.0 / current_bpm, rate_slide: g",
+                            "    if bd != 0", "      in_thread do", "        sleep gs", "        control s, rate: 2**((note(n) + bd - m) / 12.0)", "      end", "    end",
+                            "    t = b", "  end", f"  sleep {total} - t", "end"]
+            else:
+                notes = ", ".join(f"[{n[0]:g}, {pitch_sym(n[1])}, {n[2]:g}, {n[3]}]" for n in t["notes"])
+                out.append(f"notes_{i} = [{notes}]   # [拍の位置, 音名, 長さ(拍), ベロシティ]")
+                loops[i] = [f"live_loop :{i} do", "  t = 0", f"  notes_{i}.each do |b, n, l, vel|", "    sleep b - t",
+                            f"    m, f = smp_{i}.min_by {{ |k, _| (k - note(n)).abs }}",
+                            f"    sample f, rate: 2**((note(n) - m) / 12.0), {sample_opts(v)}, sustain: l * 60.0 / current_bpm",
+                            "    t = b", "  end", f"  sleep {total} - t", "end"]
         else:
             rows = bend_rows(t["notes"], v.get("glide", 0))
             bent = rows is not None

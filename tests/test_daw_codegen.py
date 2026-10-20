@@ -106,11 +106,11 @@ def test_preset_keeps_tracks_and_voices_and_clears_mute():
 def test_drum_hits_carry_their_own_velocity():
     p = {**PROJ, "tracks": [{"id": "k", "kind": "drum", "voice": {"name": "bd_haus"}, "hits": [[0.5, 87], [0, 127], [0.25, 4, 0.5]]}]}
     t = g.validate(p)["tracks"][0]
-    assert t["hits"] == [[0, 120, 0.25], [0.25, 20, 0.5], [0.5, 80, 0.25]] and "steps" not in t   # 拍の順。ベロシティは 20 刻み(20〜120)
-    assert "hits_k = [[0, 120], [0.25, 20], [0.5, 80]]" in g.generate(p)
+    assert t["hits"] == [[0, 120, 0.25], [0.25, 10, 0.5], [0.5, 90, 0.25]] and "steps" not in t   # 拍の順。ベロシティは 10 刻み(10〜120)
+    assert "hits_k = [[0, 120], [0.25, 10], [0.5, 90]]" in g.generate(p)
     # 中間の形式(steps のベロシティの文字 1〜9 a〜z)も、整数のベロシティに直る
     old = {**PROJ, "tracks": [{"id": "k", "kind": "drum", "voice": {"name": "bd_haus"}, "steps": "z1o5 .-.. ...."}]}
-    assert [h[:2] for h in g.validate(old)["tracks"][0]["hits"]] == [[0, 120], [0.25, 20], [0.5, 80], [0.75, 20]]
+    assert [h[:2] for h in g.validate(old)["tracks"][0]["hits"]] == [[0, 120], [0.25, 10], [0.5, 90], [0.75, 20]]
 
 
 def test_velocity_defaults_to_60_and_can_be_omitted():
@@ -118,7 +118,7 @@ def test_velocity_defaults_to_60_and_can_be_omitted():
                                           {"kind": "drum", "voice": {"name": "bd_haus"}, "hits": [[0], [1, 40], [2, None, 0.5]]}]})["tracks"]
     assert [n[3] for n in t[0]["notes"]] == [60, 60, 120] and g.VEL_DEFAULT == 60     # 省略 = 60。範囲外は直す
     assert [h[1] for h in t[1]["hits"]] == [60, 40, 60] and t[1]["hits"][2][2] == 0.5
-    assert [g.quant_vel(x) for x in (0, 29, 30, 69, 70, 130)] == [20, 20, 40, 60, 80, 120]   # ベロシティは 20 刻み
+    assert [g.quant_vel(x) for x in (0, 24, 25, 69, 75, 130)] == [10, 20, 30, 70, 80, 120]   # ベロシティは 10 刻み
     assert "velocity" not in t[0]["voice"]                                               # トラックの音量は持たない
     with pytest.raises(ValueError):
         g.validate({"bars": 1, "tracks": [{"kind": "drum", "voice": {"name": "bd_haus"}, "hits": [[]]}]})   # 位置もない
@@ -271,3 +271,56 @@ def test_amp_and_velocity_coexist():
     assert tr("melody", voice={"name": "saw"}, notes=[])["voice"]["amp"] == 1.0    # 省略すると 1
     assert tr("melody", voice={"name": "saw", "amp": 99}, notes=[])["voice"]["amp"] == g.AMP_MAX   # 範囲外は直す
     assert tr("melody", voice={"name": "saw", "velocity": 64}, notes=[])["voice"]["amp"] == 1.512  # 中間の形式(トラックの velocity)は amp に直る
+
+
+def test_voice_attack_release_override_env():
+    base = {"name": "p", "bpm": 130, "bars": 1, "key": {"root": "c", "scale": "minor"}, "prog": [None]}
+    def tr(voice):
+        return {**base, "tracks": [{"name": "L", "kind": "melody", "voice": voice, "notes": [[0, "c4", 1, 60]]}]}
+    v = g.validate(tr({"name": "saw", "env": "stab", "attack": 0.005, "release": 0.8}))["tracks"][0]["voice"]
+    assert v["attack"] == 0.005 and v["release"] == 0.8
+    assert "attack: 0.005, release: 0.8" in g.generate(tr({"name": "saw", "env": "stab", "attack": 0.005, "release": 0.8}))
+    v = g.validate(tr({"name": "saw", "env": "stab", "attack": 99, "release": -1}))["tracks"][0]["voice"]
+    assert v["attack"] == 2 and v["release"] == 0   # 範囲外は直す
+    assert "attack" not in g.validate(tr({"name": "saw", "env": "stab"}))["tracks"][0]["voice"]   # 省略すると env の値
+
+
+def test_sample_voice_skip_starts_mid_sample():
+    pr = {"name": "p", "bpm": 130, "bars": 1, "key": {"root": "c", "scale": "minor"}, "prog": [None],
+          "tracks": [{"name": "V", "kind": "melody", "voice": {"name": "work/samples/violin_section", "skip": 1.2},
+                      "notes": [[0, "c4", 1, 60]]}]}
+    try:
+        v = g.validate(pr)["tracks"][0]["voice"]
+    except ValueError:
+        return   # wav が置いていない環境では楽器として読めない
+    assert v["skip"] == 1.2
+    assert "start: 1.2 / (sample_duration(f) * 60.0 / current_bpm)" in g.generate(pr)
+    pr["tracks"][0]["voice"]["skip"] = 99
+    assert g.validate(pr)["tracks"][0]["voice"]["skip"] == 8
+
+
+def test_sample_voice_glide_slides_rate():
+    pr = {"name": "p", "bpm": 130, "bars": 1, "key": {"root": "c", "scale": "minor"}, "prog": [None],
+          "tracks": [{"name": "V", "kind": "melody", "voice": {"name": "work/samples/violin_section", "glide": 0.25},
+                      "notes": [[0, "a4", 1, 60], [1, "bb4", 1, 60]]}]}
+    try:
+        v = g.validate(pr)["tracks"][0]["voice"]
+    except ValueError:
+        return   # wav が置いていない環境では楽器として読めない
+    assert v["glide"] == 0.25
+    code = g.generate(pr)
+    assert "rate_slide: g" in code and "control s, rate: 2**((note(n) + bd - m) / 12.0)" in code
+    assert "[0, :a4, 1, 60, 1, 0.75, 0.25]" in code   # 次の音(bb4)が続くので、最後の 0.25 拍で +1 半音滑る
+
+
+def test_sample_voice_vibrato_modulates_rate():
+    pr = {"name": "p", "bpm": 125, "bars": 1, "key": {"root": "c", "scale": "minor"}, "prog": [None],
+          "tracks": [{"name": "V", "kind": "melody", "voice": {"name": "work/samples/violin_section", "vibrato": 0.3, "vibrato_rate": 99},
+                      "notes": [[0, "a4", 2, 60]]}]}
+    try:
+        v = g.validate(pr)["tracks"][0]["voice"]
+    except ValueError:
+        return   # wav が置いていない環境では楽器として読めない
+    assert v["vibrato"] == 0.3 and v["vibrato_rate"] == 12 and v["vibrato_delay"] == 0.25   # 範囲外は直す / 省略は既定
+    code = g.generate(pr)
+    assert "Math.sin(2 * Math::PI * 12 * k * 60.0 / current_bpm)" in code and "control s, rate:" in code
